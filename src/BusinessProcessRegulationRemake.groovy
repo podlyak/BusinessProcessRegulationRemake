@@ -16,8 +16,19 @@ void execute() {
 @SilaScriptParameters([
         @SilaScriptParameter(
                 name = 'Глубина детализации регламента',
-                type = SilaScriptParamType.SELECT_STRING, selectStringValues = ['3 уровень', '4 уровень'],
+                type = SilaScriptParamType.SELECT_STRING,
+                selectStringValues = ['3 уровень', '4 уровень'],
                 defaultValue = '3 уровень'
+        ),
+        @SilaScriptParameter(
+                name = 'Номер версии регламента',
+                type = SilaScriptParamType.STRING,
+                required = true
+        ),
+        @SilaScriptParameter(
+                name = 'Дата утверждения регламента',
+                type = SilaScriptParamType.DATE,
+                required = true
         ),
 ])
 @Slf4j
