@@ -7,7 +7,6 @@ import ru.nextconsulting.bpm.repository.structure.SilaScriptParamType
 import ru.nextconsulting.bpm.script.repository.TreeRepository
 import ru.nextconsulting.bpm.script.tree.elements.ObjectElement
 import ru.nextconsulting.bpm.script.tree.node.Model
-import ru.nextconsulting.bpm.script.tree.node.ObjectDefinition
 import ru.nextconsulting.bpm.script.utils.ModelUtils
 import ru.nextconsulting.bpm.scriptengine.context.ContextParameters
 import ru.nextconsulting.bpm.scriptengine.context.CustomScriptContext
@@ -19,6 +18,7 @@ import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameters
 import ru.nextconsulting.bpm.utils.JsonConverter
 
 import java.sql.Timestamp
+import java.time.LocalDate
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -92,20 +92,128 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static Pattern abbreviationsPattern = null
     private static Map<String, String> foundedAbbreviations = new TreeMap<>()
 
+    private static final ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
+    private static final GROUP_OBJECT_TYPE_ID = 'OT_GRP'
+
+    private static final List<String> OWNER_W_SUBPROCESS_EDGE_TYPE_IDS = [
+            'CT_EXEC_1',
+            'CT_EXEC_2',
+    ]
+    private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
+
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
     private static final String DATA_ELEMENT_CODE_ATTR_ID = '46e148b0-b96d-11e3-05b7-db7cafd96ef7'
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
 
     CustomScriptContext context
-    private TreeRepository tree_repository
+    private TreeRepository treeRepository
 
     private static int detailLevel = 3
     private static String docVersion = ''
     private static String docDate = ''
+    private static String currentYear = LocalDate.now().getYear().toString()
 
     private static boolean debug = true
 
-    private static String getName(ObjectDefinitionNode objectDefinitionNode) {
+    enum SubprocessOwnerType {
+        ORGANIZATIONAL_UNIT,
+        GROUP,
+    }
+
+    private static final Map<String, SubprocessOwnerType> subprocessOwnerTypeMap = Map.of(
+            ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID, SubprocessOwnerType.ORGANIZATIONAL_UNIT,
+            GROUP_OBJECT_TYPE_ID, SubprocessOwnerType.GROUP,
+    );
+
+    private class SubprocessDescription {
+        ObjectElement subprocess
+        String name
+        String code
+        List<SubprocessOwnerDescription> owners = []
+
+        SubprocessDescription(ObjectElement subprocess) {
+            this.subprocess = subprocess
+
+            String name = getName(subprocess)
+            if (!name) {
+                name = '<Наименование процесса>'
+            }
+            this.name = name
+
+            String code = getCode(subprocess)
+            if (!code) {
+                code = '<Код процесса>'
+            }
+            this.code = code
+        }
+
+        void findOwners() {
+            List<ObjectElement> ownerObjects = subprocess.getEnterEdges()
+                    .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
+                    .collect {it.getSource() as ObjectElement}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+            owners = ownerObjects.collect {
+                new SubprocessOwnerDescription(it, subprocessOwnerTypeMap.get(it.getObjectDefinition().getObjectTypeId()))
+            }
+        }
+    }
+
+    private class SubprocessOwnerDescription {
+        ObjectElement subprocessOwner
+        String name
+        SubprocessOwnerType type
+        String leadershipPosition = null
+
+        SubprocessOwnerDescription(ObjectElement subprocessOwner, SubprocessOwnerType subprocessOwnerType) {
+            this.subprocessOwner = subprocessOwner
+
+            String name = getName(subprocessOwner)
+            if (!name) {
+                name = '<Владелец процесса>'
+            }
+            this.name = name
+
+            this.type = subprocessOwnerType
+
+            if (type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
+                defineLeadershipPosition()
+            }
+        }
+
+        private void defineLeadershipPosition() {
+            String subprocessOwnerObjectDefinitionId = subprocessOwner.getObjectDefinition().getId()
+            Model subprocessOwnerModel = subprocessOwner.getDecompositions()
+                    .findAll {it.isModel()}
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
+                    as Model
+
+            if (subprocessOwnerModel == null) {
+                return
+            }
+
+            ObjectElement subprocessOwnerModelObject = subprocessOwnerModel.getObjects()
+                    .find {it.getObjectDefinition().getId() == subprocessOwnerObjectDefinitionId}
+
+            if (subprocessOwnerModelObject == null) {
+                return
+            }
+
+            ObjectElement leadershipPositionObject = subprocessOwnerModelObject.getEnterEdges()
+                .find {it.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID}
+                .getSource() as ObjectElement
+            String position = getName(leadershipPositionObject)
+            if (!position) {
+                position = '<Должность владельца процесса>'
+            }
+            this.leadershipPosition = position
+        }
+    }
+
+    private static String getName(ObjectElement objectElement) {
+        ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
         String name = objectDefinitionNode.getName()
 
         if (name) {
@@ -123,9 +231,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         if (name) {
             return name.replaceAll("[\\s\\n]+", " ").trim()
-        } else {
-            return ''
         }
+
+        return ''
     }
 
     private static void findAbbreviations(String name) {
@@ -142,7 +250,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
-    private static String getCode(ObjectDefinitionNode objectDefinitionNode) {
+    private static String getCode(ObjectElement objectElement) {
+        ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
         AttributeValue codeAttribute = objectDefinitionNode.getAttributes().stream()
                 .filter { it.typeId == DATA_ELEMENT_CODE_ATTR_ID}
                 .findFirst()
@@ -155,35 +264,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         return ''
     }
 
-
-    private class SubprocessDescription {
-        ObjectElement subprocess
-        String name
-        String code
-
-
-        SubprocessDescription(ObjectElement subprocess) {
-            this.subprocess = subprocess
-
-            ObjectDefinition objectDefinition = subprocess.getObjectDefinition()
-            ObjectDefinitionNode objectDefinitionNode = subprocess.getObjectDefinition()._getNode() as ObjectDefinitionNode
-
-            String name = getName(objectDefinitionNode)
-            if (!name) {
-                name = '<Наименование процесса>'
-            }
-            this.name = name
-
-            String code = getCode(objectDefinitionNode)
-            if (!code) {
-                code = '<Код процесса>'
-            }
-            this.code = code
-
-
-        }
-    }
-
     @Override
     void execute() {
         init()
@@ -193,12 +273,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private void init() {
-        tree_repository = context.createTreeRepository(true)
-        parse_parameters()
-        init_abbreviations()
+        treeRepository = context.createTreeRepository(true)
+        parseParameters()
+        initAbbreviations()
     }
 
-    private void parse_parameters() {
+    private void parseParameters() {
         if (debug) {
             detailLevel = 3
             docVersion = '1.0.0'
@@ -215,8 +295,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         docDate = approvalDate.format('dd.MM.yyyy')
     }
 
-    private void init_abbreviations() {
-        Model abbreviationsModel = tree_repository.read(context.modelId().getRepositoryId(), ABBREVIATIONS_MODEL_ID)
+    private void initAbbreviations() {
+        Model abbreviationsModel = treeRepository.read(context.modelId().getRepositoryId(), ABBREVIATIONS_MODEL_ID)
         if (!abbreviationsModel) {
             throw new SilaScriptException("Неверный ID модели аббревиатур [${ABBREVIATIONS_MODEL_ID}]")
         }
@@ -268,7 +348,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private List<ObjectElement> getSubProcessObjects() {
         List<ObjectElement> subProcessObjects = []
         if (!context.elementsIdsList().isEmpty()){
-            Model model = tree_repository.read(context.modelId().getRepositoryId(), context.modelId().getId())
+            Model model = treeRepository.read(context.modelId().getRepositoryId(), context.modelId().getId())
             List<ObjectElement> allObjects = model.getObjects()
             for (elementId in context.elementsIdsList()) {
                 for (object in allObjects) {
@@ -288,6 +368,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
         List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it)}
+        subProcessDescriptions.each {it.findOwners()}
+
 
         return subProcessDescriptions
     }
