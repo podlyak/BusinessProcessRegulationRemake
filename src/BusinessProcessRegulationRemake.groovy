@@ -7,6 +7,7 @@ import ru.nextconsulting.bpm.repository.structure.SilaScriptParamType
 import ru.nextconsulting.bpm.script.repository.TreeRepository
 import ru.nextconsulting.bpm.script.tree.elements.ObjectElement
 import ru.nextconsulting.bpm.script.tree.node.Model
+import ru.nextconsulting.bpm.script.tree.node.ObjectDefinition
 import ru.nextconsulting.bpm.script.utils.ModelUtils
 import ru.nextconsulting.bpm.scriptengine.context.ContextParameters
 import ru.nextconsulting.bpm.scriptengine.context.CustomScriptContext
@@ -82,6 +83,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
+    private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
 
     private static final GROUP_OBJECT_TYPE_ID = 'OT_GRP'
     private static final ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
@@ -126,30 +128,29 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             GROUP_OBJECT_TYPE_ID, SubprocessOwnerType.GROUP,
     )
 
-    private class SubprocessDescription {
-        ObjectElement subprocess
+    private class CommonProcessInfo {
+        ObjectElement process
         String name
         String code
+
+        CommonProcessInfo(ObjectElement process) {
+            this.process = process
+            this.name = getName(process)
+            this.code = getCode(process)
+        }
+    }
+
+    private class SubprocessDescription {
+        CommonProcessInfo subprocess
         List<SubprocessOwnerDescription> owners = []
+        CommonProcessInfo parentProcess = null
 
         SubprocessDescription(ObjectElement subprocess) {
-            this.subprocess = subprocess
-
-            String name = getName(subprocess)
-            if (!name) {
-                name = '<Наименование процесса>'
-            }
-            this.name = name
-
-            String code = getCode(subprocess)
-            if (!code) {
-                code = '<Код процесса>'
-            }
-            this.code = code
+            this.subprocess = new CommonProcessInfo(subprocess)
         }
 
         void findOwners() {
-            List<ObjectElement> ownerObjects = subprocess.getEnterEdges()
+            List<ObjectElement> ownerObjects = subprocess.process.getEnterEdges()
                     .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
                     .collect {it.getSource() as ObjectElement}
                     .unique(Comparator.comparing { ObjectElement o -> o.getId() })
@@ -157,6 +158,35 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             owners = ownerObjects.collect {
                 new SubprocessOwnerDescription(it, subprocessOwnerTypeMap.get(it.getObjectDefinition().getObjectTypeId()))
             }
+        }
+
+        void define_parent_process() {
+            List<ObjectDefinition> parentObjects = subprocess.process.model.parentObjects
+
+            ObjectDefinition parentObject = null
+            Model parentModel = null
+            for (object in parentObjects) {
+                if (parentObject) {
+                    break
+                }
+
+                List<Model> parentModels = object.getParentModels()
+                for (model in parentModels) {
+                    if (model.getId() == FIRST_LEVEL_MODEL_ID) {
+                        parentObject = object
+                        parentModel = model
+                        break
+                    }
+                }
+            }
+
+            if (parentObject == null) {
+                return
+            }
+
+            ObjectElement parentElement = parentModel.getObjects()
+                    .find {it.getObjectDefinition().getId() == parentObject.getId()}
+            this.parentProcess = new CommonProcessInfo(parentElement)
         }
     }
 
@@ -365,6 +395,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
         List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it)}
         subProcessDescriptions.each {it.findOwners()}
+        subProcessDescriptions.each {it.define_parent_process()}
 
 
         return subProcessDescriptions
