@@ -82,28 +82,29 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
+
+    private static final GROUP_OBJECT_TYPE_ID = 'OT_GRP'
+    private static final ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
+
     private static final List<String> ABBREVIATIONS_EDGE_TYPE_IDS = [
             'CT_IS_IN_RELSHP_TO_1',
             'CT_REFS_TO_2',
             'CT_HAS_REL_WITH',
             'CT_IS_IN_RELSHP_TO',
     ]
-    private static Map<String, String> fullAbbreviations = new TreeMap<>()
-    private static Pattern abbreviationsPattern = null
-    private static Map<String, String> foundedAbbreviations = new TreeMap<>()
-
-    private static final ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
-    private static final GROUP_OBJECT_TYPE_ID = 'OT_GRP'
-
+    private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
     private static final List<String> OWNER_W_SUBPROCESS_EDGE_TYPE_IDS = [
             'CT_EXEC_1',
             'CT_EXEC_2',
     ]
-    private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
 
-    private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
     private static final String DATA_ELEMENT_CODE_ATTR_ID = '46e148b0-b96d-11e3-05b7-db7cafd96ef7'
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
+    private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
+
+    private static Map<String, String> fullAbbreviations = new TreeMap<>()
+    private static Pattern abbreviationsPattern = null
+    private static Map<String, String> foundedAbbreviations = new TreeMap<>()
 
     CustomScriptContext context
     private TreeRepository treeRepository
@@ -123,7 +124,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final Map<String, SubprocessOwnerType> subprocessOwnerTypeMap = Map.of(
             ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID, SubprocessOwnerType.ORGANIZATIONAL_UNIT,
             GROUP_OBJECT_TYPE_ID, SubprocessOwnerType.GROUP,
-    );
+    )
 
     private class SubprocessDescription {
         ObjectElement subprocess
@@ -302,13 +303,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         List<ObjectElement> allObjects = abbreviationsModel.getObjects()
-        ObjectElement abbreviationsRootObject = null
-        for (object in allObjects) {
-            if (object.getObjectDefinition().getId() == ABBREVIATIONS_ROOT_OBJECT_ID) {
-                abbreviationsRootObject = object
-                break
-            }
-        }
+        ObjectElement abbreviationsRootObject = allObjects
+                .find {it.getObjectDefinition().getId() == ABBREVIATIONS_ROOT_OBJECT_ID}
 
         if (!abbreviationsRootObject) {
             throw new SilaScriptException("Неверный ID корневого объекта аббревиатур [${ABBREVIATIONS_ROOT_OBJECT_ID}]")
@@ -331,12 +327,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             String abbreviationName = abbreviationObjectDefinitionNode.getName()
             String abbreviationDescription = ''
-            AttributeValue descriprionDefinitionAttribute = abbreviationObjectDefinitionNode.getAttributes().stream()
+            AttributeValue descriptionDefinitionAttribute = abbreviationObjectDefinitionNode.getAttributes().stream()
                     .filter { it.typeId == DESCRIPTION_DEFINITION_ATTR_ID}
                     .findFirst()
                     .orElse(null)
-            if (descriprionDefinitionAttribute != null && descriprionDefinitionAttribute.value != null && !descriprionDefinitionAttribute.value.trim().isEmpty()) {
-                abbreviationDescription = descriprionDefinitionAttribute.value
+            if (descriptionDefinitionAttribute != null && descriptionDefinitionAttribute.value != null && !descriptionDefinitionAttribute.value.trim().isEmpty()) {
+                abbreviationDescription = descriptionDefinitionAttribute.value
             }
             fullAbbreviations.put(abbreviationName, abbreviationDescription)
         }
