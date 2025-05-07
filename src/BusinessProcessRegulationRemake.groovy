@@ -132,11 +132,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         ObjectElement process
         String name
         String code
+        String requirements
 
         CommonProcessInfo(ObjectElement process) {
             this.process = process
             this.name = getName(process)
-            this.code = getCode(process)
+            this.code = getAttributeValue(process, DATA_ELEMENT_CODE_ATTR_ID)
+            this.requirements = getAttributeValue(process, DESCRIPTION_DEFINITION_ATTR_ID)
         }
     }
 
@@ -198,13 +200,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         SubprocessOwnerDescription(ObjectElement subprocessOwner, SubprocessOwnerType subprocessOwnerType) {
             this.subprocessOwner = subprocessOwner
-
-            String name = getName(subprocessOwner)
-            if (!name) {
-                name = '<Владелец процесса>'
-            }
-            this.name = name
-
+            this.name = getName(subprocessOwner)
             this.type = subprocessOwnerType
 
             if (type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
@@ -235,36 +231,24 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             ObjectElement leadershipPositionObject = subprocessOwnerModelObject.getEnterEdges()
                 .find {it.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID}
                 .getSource() as ObjectElement
-            String position = getName(leadershipPositionObject)
-            if (!position) {
-                position = '<Должность владельца процесса>'
-            }
-            this.leadershipPosition = position
+            this.leadershipPosition = getName(leadershipPositionObject)
         }
     }
 
     private static String getName(ObjectElement objectElement) {
         ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
         String name = objectDefinitionNode.getName()
-
+        name = name ? name : ''
         if (name) {
             findAbbreviations(name)
         }
 
-        AttributeValue fullNameAttribute = objectDefinitionNode.getAttributes().stream()
-                .filter { it.typeId == FULL_NAME_ATTR_ID }
-                .findFirst()
-                .orElse(null)
-        if (fullNameAttribute != null && fullNameAttribute.value != null && !fullNameAttribute.value.trim().isEmpty()) {
-            name = fullNameAttribute.value
-            findAbbreviations(name)
+        String fullName = getAttributeValue(objectElement, FULL_NAME_ATTR_ID)
+        if (fullName) {
+            findAbbreviations(fullName)
         }
 
-        if (name) {
-            return name.replaceAll("[\\s\\n]+", " ").trim()
-        }
-
-        return ''
+        return fullName ? fullName : name
     }
 
     private static void findAbbreviations(String name) {
@@ -281,10 +265,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
-    private static String getCode(ObjectElement objectElement) {
+    private static String getAttributeValue(ObjectElement objectElement, String attributeId) {
         ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
         AttributeValue codeAttribute = objectDefinitionNode.getAttributes().stream()
-                .filter { it.typeId == DATA_ELEMENT_CODE_ATTR_ID}
+                .filter { it.typeId == attributeId}
                 .findFirst()
                 .orElse(null)
 
