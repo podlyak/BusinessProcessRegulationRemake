@@ -136,15 +136,23 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             GROUP_OBJECT_TYPE_ID, SubprocessOwnerType.GROUP,
     )
 
-    private class CommonProcessInfo {
-        ObjectElement process
+    private class CommonObjectInfo {
+        ObjectElement object
         String name
+
+        CommonObjectInfo(ObjectElement object) {
+            this.object = object
+            this.name = getName(object)
+        }
+    }
+
+    private class CommonProcessInfo {
+        CommonObjectInfo process
         String code
         String requirements
 
         CommonProcessInfo(ObjectElement process) {
-            this.process = process
-            this.name = getName(process)
+            this.process = new CommonObjectInfo(process)
             this.code = getAttributeValue(process, DATA_ELEMENT_CODE_ATTR_ID)
             this.requirements = getAttributeValue(process, DESCRIPTION_DEFINITION_ATTR_ID)
         }
@@ -162,7 +170,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void findOwners() {
-            List<ObjectElement> ownerObjects = subprocess.process.getEnterEdges()
+            List<ObjectElement> ownerObjects = subprocess.process.object.getEnterEdges()
                     .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
                     .collect {it.getSource() as ObjectElement}
                     .unique(Comparator.comparing { ObjectElement o -> o.getId() })
@@ -173,7 +181,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void define_parent_process() {
-            List<ObjectDefinition> parentObjects = subprocess.process.model.parentObjects
+            List<ObjectDefinition> parentObjects = subprocess.process.object.model.parentObjects
 
             ObjectDefinition parentObject = null
             Model parentModel = null
@@ -202,10 +210,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void findExternalProcessInputFlows() {
-            List<ObjectElement> allFlowObjects = subprocess.process.model.getObjects()
+            List<ObjectElement> allFlowObjects = subprocess.process.object.model.getObjects()
                     .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
 
-            List<ObjectElement> inputFlowObjects = subprocess.process.getEnterEdges()
+            List<ObjectElement> inputFlowObjects = subprocess.process.object.getEnterEdges()
                     .findAll {it.getEdgeTypeId() == INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID}
                     .collect {it.getSource() as ObjectElement}
                     .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
@@ -255,7 +263,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void findExternalProcessOutputFlows() {
-            List<ObjectElement> outputFlowObjects = subprocess.process.getExitEdges()
+            List<ObjectElement> outputFlowObjects = subprocess.process.object.getExitEdges()
                     .findAll {it.getEdgeTypeId() == SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID}
                     .collect {it.getTarget() as ObjectElement}
                     .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
@@ -279,8 +287,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private Map<String, List<String>> getExternalProcessesWithInputFlows() {
             Map<String, List<String>> externalProcessesWithInputFlows = new HashMap<>()
             externalProcessInputFlowDescriptions.each {
-                String inputFlowName = getName(it.inputFlow)
-                List<String> supplierNames = it.suppliers.collect {it.name}
+                String inputFlowName = it.inputFlow.name
+                List<String> supplierNames = it.suppliers.collect {it.process.name}
                 addExternalProcessesWithFlow(externalProcessesWithInputFlows, inputFlowName, supplierNames)
             }
             return externalProcessesWithInputFlows
@@ -289,14 +297,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private Map<String, List<String>> getExternalProcessesWithOutputFlows() {
             Map<String, List<String>> externalProcessesWithOutputFlows = new HashMap<>()
             externalProcessOutputFlowDescriptions.each {
-                String outputFlowName = getName(it.outputFlow)
-                List<String> customerNames = it.customers.collect {it.name}
+                String outputFlowName = it.outputFlow.name
+                List<String> customerNames = it.customers.collect {it.process.name}
                 addExternalProcessesWithFlow(externalProcessesWithOutputFlows, outputFlowName, customerNames)
             }
             return externalProcessesWithOutputFlows
         }
 
-        private Map<String, List<String>> addExternalProcessesWithFlow(Map<String, List<String>> externalProcessesWithFlows, String flowName, List<String> processNames) {
+        private void addExternalProcessesWithFlow(Map<String, List<String>> externalProcessesWithFlows, String flowName, List<String> processNames) {
             for (processName in processNames) {
                 if (processName in externalProcessesWithFlows.keySet()) {
                     List<String> currentProcessNameValues = externalProcessesWithFlows.get(processName)
@@ -358,21 +366,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private class InputFlowDescription {
-        ObjectElement inputFlow
+        CommonObjectInfo inputFlow
         List<CommonProcessInfo> suppliers = []
 
         InputFlowDescription(ObjectElement inputFlow, List<ObjectElement> supplierObjects) {
-            this.inputFlow = inputFlow
+            this.inputFlow = new CommonObjectInfo(inputFlow)
             this.suppliers = supplierObjects.collect {new CommonProcessInfo(it)}
         }
     }
 
     private class OutputFlowDescription {
-        ObjectElement outputFlow
+        CommonObjectInfo outputFlow
         public List<CommonProcessInfo> customers = []
 
         OutputFlowDescription(ObjectElement outputFlow, List<ObjectElement> customerObjects) {
-            this.outputFlow = outputFlow
+            this.outputFlow = new CommonObjectInfo(outputFlow)
             this.customers = customerObjects.collect {new CommonProcessInfo(it)}
         }
     }
