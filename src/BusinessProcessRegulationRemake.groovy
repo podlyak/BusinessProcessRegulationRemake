@@ -85,7 +85,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
     private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
 
+    private static final String ALLOCATION_MODEL_TYPE_ID = 'MT_FUNC_ALLOC_DGM'
+
     private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
+    private static final String GOAL_OBJECT_TYPE_ID = 'OT_OBJECTIVE'
     private static final String GROUP_OBJECT_TYPE_ID = 'OT_GRP'
     private static final String ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
 
@@ -105,12 +108,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
     private static final String SUPPLIER_W_INPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
 
-    // TODO: переименовать и уточнить по внешнему
-    private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
-
     private static final String DATA_ELEMENT_CODE_ATTR_ID = '46e148b0-b96d-11e3-05b7-db7cafd96ef7'
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
+
+    // TODO: переименовать и уточнить по внешнему
+    private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
 
     private static Map<String, String> fullAbbreviations = new TreeMap<>()
     private static Pattern abbreviationsPattern = null
@@ -162,6 +165,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         CommonProcessInfo subprocess
         List<SubprocessOwnerDescription> owners = []
         CommonProcessInfo parentProcess = null
+        List<CommonObjectInfo> goals = []
         List<InputFlowDescription> externalProcessInputFlowDescriptions = []
         List<OutputFlowDescription> externalProcessOutputFlowDescriptions = []
 
@@ -180,7 +184,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void define_parent_process() {
+        private void defineParentProcess() {
             List<ObjectDefinition> parentObjects = subprocess.process.object.model.parentObjects
 
             ObjectDefinition parentObject = null
@@ -207,6 +211,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             ObjectElement parentElement = parentModel.getObjects()
                     .find {it.getObjectDefinition().getId() == parentObject.getId()}
             this.parentProcess = new CommonProcessInfo(parentElement)
+        }
+
+        private void defineGoals() {
+            List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
+                    .findAll {it.isModel()} as List<Model>
+            Model allocationModel = modelDecompositions
+                    .find {it.getModelTypeId() == ALLOCATION_MODEL_TYPE_ID}
+
+            if (allocationModel == null) {
+                return
+            }
+
+            List<ObjectElement> goalObjects = allocationModel.getObjects()
+                    .findAll {it.getObjectDefinition().getObjectTypeId() == GOAL_OBJECT_TYPE_ID}
+            goals = goalObjects.collect {new CommonObjectInfo(it)}
         }
 
         private void findExternalProcessInputFlows() {
@@ -529,7 +548,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
         List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it)}
         subProcessDescriptions.each {it.findOwners()}
-        subProcessDescriptions.each {it.define_parent_process()}
+        subProcessDescriptions.each {it.defineParentProcess()}
+        subProcessDescriptions.each {it.defineGoals()}
         subProcessDescriptions.each {it.findExternalProcessInputFlows()}
         subProcessDescriptions.each {it.findExternalProcessOutputFlows()}
 
