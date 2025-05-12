@@ -85,7 +85,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
     private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
 
-    private static final String ALLOCATION_MODEL_TYPE_ID = 'MT_FUNC_ALLOC_DGM'
+    private static final String EPC_MODEL_TYPE_ID = 'MT_EEPC'
+    private static final String FUNCTION_ALLOCATION_MODEL_TYPE_ID = 'MT_FUNC_ALLOC_DGM'
+    private static final String PROCESS_SELECTION_MODEL_TYPE_ID = 'MT_PRCS_SLCT_DIA'
 
     private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
     private static final String GOAL_OBJECT_TYPE_ID = 'OT_OBJECTIVE'
@@ -112,8 +114,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
 
-    // TODO: переименовать и уточнить по внешнему
+    // TODO: переименовать??? и уточнить по просто внешнему, а не смежному
     private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
+    // TODO: уточнить по другим типам символа сценария
+    private static final String SCENARIO_SYMBOL_ID = 'ST_SCENARIO'
 
     private static Map<String, String> fullAbbreviations = new TreeMap<>()
     private static Pattern abbreviationsPattern = null
@@ -169,6 +173,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<CommonObjectInfo> goals = []
         List<InputFlowDescription> externalProcessInputFlowDescriptions = []
         List<OutputFlowDescription> externalProcessOutputFlowDescriptions = []
+        Model processSelectionModel = null
+        List<ScenarioDescription> scenarios = []
 
         SubprocessDescription(ObjectElement subprocess) {
             this.subprocess = new CommonProcessInfo(subprocess)
@@ -217,14 +223,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void defineGoals() {
             List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
                     .findAll {it.isModel()} as List<Model>
-            Model allocationModel = modelDecompositions
-                    .find {it.getModelTypeId() == ALLOCATION_MODEL_TYPE_ID}
+            Model functionAllocationModel = modelDecompositions
+                    .find {it.getModelTypeId() == FUNCTION_ALLOCATION_MODEL_TYPE_ID}
 
-            if (allocationModel == null) {
+            if (functionAllocationModel == null) {
                 return
             }
 
-            List<ObjectElement> goalObjects = allocationModel.getObjects()
+            List<ObjectElement> goalObjects = functionAllocationModel.getObjects()
                     .findAll {it.getObjectDefinition().getObjectTypeId() == GOAL_OBJECT_TYPE_ID}
             goals = goalObjects.collect {new CommonObjectInfo(it)}
         }
@@ -339,6 +345,51 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     externalProcessesWithFlows.put(processName, [flowName])
                 }
             }
+        }
+
+        private void defineProcessSelectionModel() {
+            List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
+                    .findAll {it.isModel()} as List<Model>
+            processSelectionModel = modelDecompositions
+                    .find {it.getModelTypeId() == PROCESS_SELECTION_MODEL_TYPE_ID}
+        }
+
+        private void defineScenarios() {
+            if (processSelectionModel) {
+                defineScenariosViaProcessSelectionModel()
+                return
+            }
+
+            List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
+                    .findAll {it.isModel()} as List<Model>
+            Model scenarioModel = modelDecompositions
+                    .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
+
+            if (scenarioModel) {
+                scenarios.add(new ScenarioDescription(scenarioModel))
+            }
+        }
+
+        private void defineScenariosViaProcessSelectionModel() {
+            List<ObjectElement> scenarioObjects = processSelectionModel.getObjects()
+                    .findAll {it.getSymbolId() == SCENARIO_SYMBOL_ID}
+            scenarioObjects.each {ObjectElement scenarioObject ->
+                List<Model> modelDecompositions = scenarioObject.getDecompositions()
+                        .findAll {it.isModel()} as List<Model>
+                Model scenarioModel = modelDecompositions
+                        .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
+                if (scenarioModel) {
+                    scenarios.add(new ScenarioDescription(scenarioModel))
+                }
+            }
+        }
+    }
+
+    private class ScenarioDescription {
+        Model scenario
+
+        ScenarioDescription(Model scenario) {
+            this.scenario = scenario
         }
     }
 
@@ -563,6 +614,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 //        subProcessDescriptions.each {
 //            externalProcessesWithOutputFlows.add(it.getExternalProcessesWithOutputFlows())
 //        }
+
+        subProcessDescriptions.each {it.defineProcessSelectionModel()}
+        subProcessDescriptions.each {it.defineScenarios()}
 
         return subProcessDescriptions
     }
