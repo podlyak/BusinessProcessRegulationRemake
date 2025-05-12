@@ -85,8 +85,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
     private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
 
-    private static final GROUP_OBJECT_TYPE_ID = 'OT_GRP'
-    private static final ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
+    private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
+    private static final String GROUP_OBJECT_TYPE_ID = 'OT_GRP'
+    private static final String ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
 
     private static final List<String> ABBREVIATIONS_EDGE_TYPE_IDS = [
             'CT_IS_IN_RELSHP_TO_1',
@@ -94,11 +95,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             'CT_HAS_REL_WITH',
             'CT_IS_IN_RELSHP_TO',
     ]
+    private static final String INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
     private static final List<String> OWNER_W_SUBPROCESS_EDGE_TYPE_IDS = [
             'CT_EXEC_1',
             'CT_EXEC_2',
     ]
+    private static final String OUTPUT_FLOW_W_CUSTOMER_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
+    private static final String SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
+    private static final String SUPPLIER_W_INPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
+
+    // TODO: переименовать и уточнить по внешнему
+    private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
 
     private static final String DATA_ELEMENT_CODE_ATTR_ID = '46e148b0-b96d-11e3-05b7-db7cafd96ef7'
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
@@ -146,12 +154,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         CommonProcessInfo subprocess
         List<SubprocessOwnerDescription> owners = []
         CommonProcessInfo parentProcess = null
+        List<InputFlowDescription> externalProcessInputFlowDescriptions = []
+        List<OutputFlowDescription> externalProcessOutputFlowDescriptions = []
 
         SubprocessDescription(ObjectElement subprocess) {
             this.subprocess = new CommonProcessInfo(subprocess)
         }
 
-        void findOwners() {
+        private void findOwners() {
             List<ObjectElement> ownerObjects = subprocess.process.getEnterEdges()
                     .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
                     .collect {it.getSource() as ObjectElement}
@@ -162,7 +172,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        void define_parent_process() {
+        private void define_parent_process() {
             List<ObjectDefinition> parentObjects = subprocess.process.model.parentObjects
 
             ObjectDefinition parentObject = null
@@ -189,6 +199,118 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             ObjectElement parentElement = parentModel.getObjects()
                     .find {it.getObjectDefinition().getId() == parentObject.getId()}
             this.parentProcess = new CommonProcessInfo(parentElement)
+        }
+
+        private void findExternalProcessInputFlows() {
+            List<ObjectElement> allFlowObjects = subprocess.process.model.getObjects()
+                    .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
+
+            List<ObjectElement> inputFlowObjects = subprocess.process.getEnterEdges()
+                    .findAll {it.getEdgeTypeId() == INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID}
+                    .collect {it.getSource() as ObjectElement}
+                    .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+
+            inputFlowObjects.forEach {ObjectElement currentFlowObject ->
+                List<ObjectElement> externalSupplierObjects = currentFlowObject.getEnterEdges()
+                        .findAll {it.getEdgeTypeId() == SUPPLIER_W_INPUT_FLOW_EDGE_TYPE_ID}
+                        .collect {it.getSource() as ObjectElement}
+                        .findAll {it.getSymbolId() == EXTERNAL_PROCESS_SYMBOL_ID}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                        .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+
+                List<ObjectElement> additionalExternalSupplierObjects = findAdditionalExternalSupplierObjects(currentFlowObject, allFlowObjects)
+                externalSupplierObjects.addAll(additionalExternalSupplierObjects)
+                externalSupplierObjects = externalSupplierObjects
+                        .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinition().getId() })
+                        .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+
+                if (externalSupplierObjects) {
+                    externalProcessInputFlowDescriptions.add(new InputFlowDescription(currentFlowObject, externalSupplierObjects))
+                }
+            }
+        }
+
+        private List<ObjectElement> findAdditionalExternalSupplierObjects(ObjectElement currentFlowObject, List<ObjectElement> allFlowObjects) {
+            String currentFlowObjectDefinitionId = currentFlowObject.getObjectDefinition().getId()
+            List<ObjectElement> currentFlowObjects = allFlowObjects
+                    .findAll {it.getObjectDefinition().getId() == currentFlowObjectDefinitionId}
+
+            List<ObjectElement> additionalExternalSupplierObjects = []
+            for (flowObject in currentFlowObjects) {
+                if (flowObject.getId() == currentFlowObject.getId()) {
+                    continue
+                }
+
+                List<ObjectElement> foundedObjects = flowObject.getEnterEdges()
+                        .findAll {it.getEdgeTypeId() == SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID}
+                        .collect {it.getSource() as ObjectElement}
+                        .findAll {it.getSymbolId() == EXTERNAL_PROCESS_SYMBOL_ID}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                        .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+                additionalExternalSupplierObjects.addAll(foundedObjects)
+            }
+            return additionalExternalSupplierObjects
+        }
+
+        private void findExternalProcessOutputFlows() {
+            List<ObjectElement> outputFlowObjects = subprocess.process.getExitEdges()
+                    .findAll {it.getEdgeTypeId() == SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID}
+                    .collect {it.getTarget() as ObjectElement}
+                    .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+
+            outputFlowObjects.forEach {ObjectElement currentFlowObject ->
+                List<ObjectElement> externalCustomerObjects = currentFlowObject.getExitEdges()
+                        .findAll {it.getEdgeTypeId() == OUTPUT_FLOW_W_CUSTOMER_EDGE_TYPE_ID}
+                        .collect {it.getTarget() as ObjectElement}
+                        .findAll {it.getSymbolId() == EXTERNAL_PROCESS_SYMBOL_ID}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                        .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+
+                if (externalCustomerObjects) {
+                    externalProcessOutputFlowDescriptions.add(new OutputFlowDescription(currentFlowObject, externalCustomerObjects))
+                }
+            }
+        }
+
+        private Map<String, List<String>> getExternalProcessesWithInputFlows() {
+            Map<String, List<String>> externalProcessesWithInputFlows = new HashMap<>()
+            externalProcessInputFlowDescriptions.each {
+                String inputFlowName = getName(it.inputFlow)
+                List<String> supplierNames = it.suppliers.collect {it.name}
+                addExternalProcessesWithFlow(externalProcessesWithInputFlows, inputFlowName, supplierNames)
+            }
+            return externalProcessesWithInputFlows
+        }
+
+        private Map<String, List<String>> getExternalProcessesWithOutputFlows() {
+            Map<String, List<String>> externalProcessesWithOutputFlows = new HashMap<>()
+            externalProcessOutputFlowDescriptions.each {
+                String outputFlowName = getName(it.outputFlow)
+                List<String> customerNames = it.customers.collect {it.name}
+                addExternalProcessesWithFlow(externalProcessesWithOutputFlows, outputFlowName, customerNames)
+            }
+            return externalProcessesWithOutputFlows
+        }
+
+        private Map<String, List<String>> addExternalProcessesWithFlow(Map<String, List<String>> externalProcessesWithFlows, String flowName, List<String> processNames) {
+            for (processName in processNames) {
+                if (processName in externalProcessesWithFlows.keySet()) {
+                    List<String> currentProcessNameValues = externalProcessesWithFlows.get(processName)
+
+                    if (flowName in currentProcessNameValues) {
+                        continue
+                    }
+
+                    currentProcessNameValues.add(flowName)
+                }
+                else {
+                    externalProcessesWithFlows.put(processName, [flowName])
+                }
+            }
         }
     }
 
@@ -229,9 +351,29 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             ObjectElement leadershipPositionObject = subprocessOwnerModelObject.getEnterEdges()
-                .find {it.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID}
-                .getSource() as ObjectElement
+                    .find {it.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID}
+                    .getSource() as ObjectElement
             this.leadershipPosition = getName(leadershipPositionObject)
+        }
+    }
+
+    private class InputFlowDescription {
+        ObjectElement inputFlow
+        List<CommonProcessInfo> suppliers = []
+
+        InputFlowDescription(ObjectElement inputFlow, List<ObjectElement> supplierObjects) {
+            this.inputFlow = inputFlow
+            this.suppliers = supplierObjects.collect {new CommonProcessInfo(it)}
+        }
+    }
+
+    private class OutputFlowDescription {
+        ObjectElement outputFlow
+        public List<CommonProcessInfo> customers = []
+
+        OutputFlowDescription(ObjectElement outputFlow, List<ObjectElement> customerObjects) {
+            this.outputFlow = outputFlow
+            this.customers = customerObjects.collect {new CommonProcessInfo(it)}
         }
     }
 
@@ -380,7 +522,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it)}
         subProcessDescriptions.each {it.findOwners()}
         subProcessDescriptions.each {it.define_parent_process()}
+        subProcessDescriptions.each {it.findExternalProcessInputFlows()}
+        subProcessDescriptions.each {it.findExternalProcessOutputFlows()}
 
+//        List<Map<String, List<String>>> externalProcessesWithInputFlows = []
+//        subProcessDescriptions.each {
+//            externalProcessesWithInputFlows.add(it.getExternalProcessesWithInputFlows())
+//        }
+//
+//        List<Map<String, List<String>>> externalProcessesWithOutputFlows = []
+//        subProcessDescriptions.each {
+//            externalProcessesWithOutputFlows.add(it.getExternalProcessesWithOutputFlows())
+//        }
 
         return subProcessDescriptions
     }
