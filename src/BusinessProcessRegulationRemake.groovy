@@ -156,6 +156,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         CommonProcessInfo(ObjectElement process) {
             this.process = new CommonObjectInfo(process)
+            // TODO: логика получения кода для сценариев
             this.code = getAttributeValue(process, DATA_ELEMENT_CODE_ATTR_ID)
             this.requirements = getAttributeValue(process, DESCRIPTION_DEFINITION_ATTR_ID)
         }
@@ -163,25 +164,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private class SubprocessDescription {
         CommonProcessInfo subprocess
-        List<SubprocessOwnerDescription> owners = []
         CommonProcessInfo parentProcess = null
+        List<SubprocessOwnerDescription> owners = []
         List<CommonObjectInfo> goals = []
         List<InputFlowDescription> externalProcessInputFlowDescriptions = []
         List<OutputFlowDescription> externalProcessOutputFlowDescriptions = []
 
         SubprocessDescription(ObjectElement subprocess) {
             this.subprocess = new CommonProcessInfo(subprocess)
-        }
-
-        private void findOwners() {
-            List<ObjectElement> ownerObjects = subprocess.process.object.getEnterEdges()
-                    .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
-                    .collect {it.getSource() as ObjectElement}
-                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
-                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
-            owners = ownerObjects.collect {
-                new SubprocessOwnerDescription(it, subprocessOwnerTypeMap.get(it.getObjectDefinition().getObjectTypeId()))
-            }
         }
 
         private void defineParentProcess() {
@@ -211,6 +201,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             ObjectElement parentElement = parentModel.getObjects()
                     .find {it.getObjectDefinition().getId() == parentObject.getId()}
             this.parentProcess = new CommonProcessInfo(parentElement)
+        }
+
+        private void findOwners() {
+            List<ObjectElement> ownerObjects = subprocess.process.object.getEnterEdges()
+                    .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
+                    .collect {it.getSource() as ObjectElement}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+            owners = ownerObjects.collect {
+                new SubprocessOwnerDescription(it, subprocessOwnerTypeMap.get(it.getObjectDefinition().getObjectTypeId()))
+            }
         }
 
         private void defineGoals() {
@@ -436,13 +437,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private static String getAttributeValue(ObjectElement objectElement, String attributeId) {
         ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
-        AttributeValue codeAttribute = objectDefinitionNode.getAttributes().stream()
+        AttributeValue attribute = objectDefinitionNode.getAttributes().stream()
                 .filter { it.typeId == attributeId}
                 .findFirst()
                 .orElse(null)
 
-        if (codeAttribute != null && codeAttribute.value != null && !codeAttribute.value.trim().isEmpty()) {
-            return codeAttribute.value
+        if (attribute != null && attribute.value != null && !attribute.value.trim().isEmpty()) {
+            return attribute.value
         }
 
         return ''
@@ -547,8 +548,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
         List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it)}
-        subProcessDescriptions.each {it.findOwners()}
         subProcessDescriptions.each {it.defineParentProcess()}
+        subProcessDescriptions.each {it.findOwners()}
         subProcessDescriptions.each {it.defineGoals()}
         subProcessDescriptions.each {it.findExternalProcessInputFlows()}
         subProcessDescriptions.each {it.findExternalProcessOutputFlows()}
