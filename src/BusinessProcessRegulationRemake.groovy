@@ -92,6 +92,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String PROCESS_SELECTION_MODEL_TYPE_ID = 'MT_PRCS_SLCT_DIA'
 
     private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
+    private static final String FUNCTION_OBJECT_TYPE_ID = 'OT_FUNC'
     private static final String GOAL_OBJECT_TYPE_ID = 'OT_OBJECTIVE'
     private static final String GROUP_OBJECT_TYPE_ID = 'OT_GRP'
     private static final String ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
@@ -173,8 +174,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         CommonFunctionInfo(Model model) {
+            // TODO: логика получения имени, требований, кода для одиночных сценариев
             this.function = new CommonObjectInfo(model)
-            // TODO: логика получения кода для сценариев
             this.code = getAttributeValue(model, DATA_ELEMENT_CODE_ATTR_ID)
             this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID)
         }
@@ -374,7 +375,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            Model scenarioModel = getScenarioModel(subprocess.function.object)
+            Model scenarioModel = getEPCModel(subprocess.function.object)
             if (scenarioModel) {
                 scenarios.add(new ScenarioDescription(scenarioModel))
             }
@@ -383,35 +384,64 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void defineScenariosViaProcessSelectionModel() {
             List<ObjectElement> scenarioObjects = processSelectionModel.getObjects()
                     .findAll {it.getSymbolId() == SCENARIO_SYMBOL_ID}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
 
             scenarioObjects.each {ObjectElement scenarioObject ->
-                Model scenarioModel = getScenarioModel(scenarioObject)
+                Model scenarioModel = getEPCModel(scenarioObject)
                 if (scenarioModel) {
                     scenarios.add(new ScenarioDescription(scenarioModel, scenarioObject))
                 }
             }
         }
 
-        private Model getScenarioModel(ObjectElement objectElement) {
-            List<Model> modelDecompositions = objectElement.getDecompositions()
-                    .findAll {it.isModel()} as List<Model>
-            Model scenarioModel = modelDecompositions
-                    .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
-            return scenarioModel
+        private void defineProcedures() {
+            scenarios.each {it.defineProcedures()}
         }
     }
 
     private class ScenarioDescription {
-        CommonFunctionInfo scenario
-        Model model
+        EPCDescription scenario
+        List<EPCDescription> procedures = []
 
-        ScenarioDescription(Model model, ObjectElement scenarioObject) {
-            this.scenario = new CommonFunctionInfo(scenarioObject)
-            this.model = model
+        ScenarioDescription(Model model, ObjectElement functionObject) {
+            this.scenario = new EPCDescription(model, functionObject)
         }
 
         ScenarioDescription(Model model) {
-            this.scenario = new CommonFunctionInfo(model)
+            this.scenario = new EPCDescription(model)
+        }
+
+        private void defineProcedures() {
+            List<ObjectElement> procedureObjects = scenario.model.getObjects()
+                    .findAll {it.getObjectDefinition().getObjectTypeId() == FUNCTION_OBJECT_TYPE_ID}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+
+            procedureObjects.each {ObjectElement procedureObject ->
+                Model procedureModel = getEPCModel(procedureObject)
+
+                if (procedureModel == null) {
+                    // TODO: что делать, если выбран режим до 4 уровня, а у какого-либо 3 лвла нет декомпозиции на 4?
+                    return
+                }
+
+                procedures.add(new EPCDescription(procedureModel, procedureObject))
+            }
+        }
+    }
+
+    private class EPCDescription {
+        CommonFunctionInfo functionInfo
+        Model model
+
+        EPCDescription(Model model, ObjectElement functionObject) {
+            this.functionInfo = new CommonFunctionInfo(functionObject)
+            this.model = model
+        }
+
+        EPCDescription(Model model) {
+            this.functionInfo = new CommonFunctionInfo(model)
             this.model = model
         }
     }
@@ -521,6 +551,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         return ''
+    }
+
+    private static Model getEPCModel(ObjectElement objectElement) {
+        List<Model> modelDecompositions = objectElement.getDecompositions()
+                .findAll {it.isModel()} as List<Model>
+        Model epcModel = modelDecompositions
+                .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
+        return epcModel
     }
 
     @Override
