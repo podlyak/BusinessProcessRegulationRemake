@@ -1,6 +1,7 @@
 import groovy.util.logging.Slf4j
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.repository.business.AttributeValue
+import ru.nextconsulting.bpm.repository.structure.Node
 import ru.nextconsulting.bpm.repository.structure.ObjectDefinitionNode
 import ru.nextconsulting.bpm.repository.structure.ScriptParameter
 import ru.nextconsulting.bpm.repository.structure.SilaScriptParamType
@@ -8,6 +9,7 @@ import ru.nextconsulting.bpm.script.repository.TreeRepository
 import ru.nextconsulting.bpm.script.tree.elements.ObjectElement
 import ru.nextconsulting.bpm.script.tree.node.Model
 import ru.nextconsulting.bpm.script.tree.node.ObjectDefinition
+import ru.nextconsulting.bpm.script.tree.node.TreeNode
 import ru.nextconsulting.bpm.script.utils.ModelUtils
 import ru.nextconsulting.bpm.scriptengine.context.ContextParameters
 import ru.nextconsulting.bpm.scriptengine.context.CustomScriptContext
@@ -149,26 +151,38 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         CommonObjectInfo(ObjectElement object) {
             this.object = object
-            this.name = getName(object)
+            this.name = getName(object.getObjectDefinition())
+        }
+
+        CommonObjectInfo(Model model) {
+            this.object = null
+            this.name = getName(model)
         }
     }
 
-    private class CommonProcessInfo {
-        CommonObjectInfo process
+    private class CommonFunctionInfo {
+        CommonObjectInfo function
         String code
         String requirements
 
-        CommonProcessInfo(ObjectElement process) {
-            this.process = new CommonObjectInfo(process)
+        CommonFunctionInfo(ObjectElement function) {
+            this.function = new CommonObjectInfo(function)
+            ObjectDefinition objectDefinition = function.getObjectDefinition()
+            this.code = getAttributeValue(objectDefinition, DATA_ELEMENT_CODE_ATTR_ID)
+            this.requirements = getAttributeValue(objectDefinition, DESCRIPTION_DEFINITION_ATTR_ID)
+        }
+
+        CommonFunctionInfo(Model model) {
+            this.function = new CommonObjectInfo(model)
             // TODO: логика получения кода для сценариев
-            this.code = getAttributeValue(process, DATA_ELEMENT_CODE_ATTR_ID)
-            this.requirements = getAttributeValue(process, DESCRIPTION_DEFINITION_ATTR_ID)
+            this.code = getAttributeValue(model, DATA_ELEMENT_CODE_ATTR_ID)
+            this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID)
         }
     }
 
     private class SubprocessDescription {
-        CommonProcessInfo subprocess
-        CommonProcessInfo parentProcess = null
+        CommonFunctionInfo subprocess
+        CommonFunctionInfo parentProcess = null
         List<SubprocessOwnerDescription> owners = []
         List<CommonObjectInfo> goals = []
         List<InputFlowDescription> externalProcessInputFlowDescriptions = []
@@ -177,11 +191,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<ScenarioDescription> scenarios = []
 
         SubprocessDescription(ObjectElement subprocess) {
-            this.subprocess = new CommonProcessInfo(subprocess)
+            this.subprocess = new CommonFunctionInfo(subprocess)
         }
 
         private void defineParentProcess() {
-            List<ObjectDefinition> parentObjects = subprocess.process.object.model.parentObjects
+            List<ObjectDefinition> parentObjects = subprocess.function.object.model.parentObjects
 
             ObjectDefinition parentObject = null
             Model parentModel = null
@@ -206,11 +220,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             ObjectElement parentElement = parentModel.getObjects()
                     .find {it.getObjectDefinition().getId() == parentObject.getId()}
-            this.parentProcess = new CommonProcessInfo(parentElement)
+            this.parentProcess = new CommonFunctionInfo(parentElement)
         }
 
         private void findOwners() {
-            List<ObjectElement> ownerObjects = subprocess.process.object.getEnterEdges()
+            List<ObjectElement> ownerObjects = subprocess.function.object.getEnterEdges()
                     .findAll {it.getEdgeTypeId() in OWNER_W_SUBPROCESS_EDGE_TYPE_IDS}
                     .collect {it.getSource() as ObjectElement}
                     .unique(Comparator.comparing { ObjectElement o -> o.getId() })
@@ -221,7 +235,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void defineGoals() {
-            List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
+            List<Model> modelDecompositions = subprocess.function.object.getDecompositions()
                     .findAll {it.isModel()} as List<Model>
             Model functionAllocationModel = modelDecompositions
                     .find {it.getModelTypeId() == FUNCTION_ALLOCATION_MODEL_TYPE_ID}
@@ -236,17 +250,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void findExternalProcessInputFlows() {
-            List<ObjectElement> allFlowObjects = subprocess.process.object.model.getObjects()
+            List<ObjectElement> allFlowObjects = subprocess.function.object.model.getObjects()
                     .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
 
-            List<ObjectElement> inputFlowObjects = subprocess.process.object.getEnterEdges()
+            List<ObjectElement> inputFlowObjects = subprocess.function.object.getEnterEdges()
                     .findAll {it.getEdgeTypeId() == INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID}
                     .collect {it.getSource() as ObjectElement}
                     .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
                     .unique(Comparator.comparing { ObjectElement o -> o.getId() })
                     .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
 
-            inputFlowObjects.forEach {ObjectElement currentFlowObject ->
+            inputFlowObjects.each {ObjectElement currentFlowObject ->
                 List<ObjectElement> externalSupplierObjects = currentFlowObject.getEnterEdges()
                         .findAll {it.getEdgeTypeId() == SUPPLIER_W_INPUT_FLOW_EDGE_TYPE_ID}
                         .collect {it.getSource() as ObjectElement}
@@ -289,14 +303,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void findExternalProcessOutputFlows() {
-            List<ObjectElement> outputFlowObjects = subprocess.process.object.getExitEdges()
+            List<ObjectElement> outputFlowObjects = subprocess.function.object.getExitEdges()
                     .findAll {it.getEdgeTypeId() == SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID}
                     .collect {it.getTarget() as ObjectElement}
                     .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
                     .unique(Comparator.comparing { ObjectElement o -> o.getId() })
                     .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
 
-            outputFlowObjects.forEach {ObjectElement currentFlowObject ->
+            outputFlowObjects.each {ObjectElement currentFlowObject ->
                 List<ObjectElement> externalCustomerObjects = currentFlowObject.getExitEdges()
                         .findAll {it.getEdgeTypeId() == OUTPUT_FLOW_W_CUSTOMER_EDGE_TYPE_ID}
                         .collect {it.getTarget() as ObjectElement}
@@ -312,9 +326,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private Map<String, List<String>> getExternalProcessesWithInputFlows() {
             Map<String, List<String>> externalProcessesWithInputFlows = new HashMap<>()
-            externalProcessInputFlowDescriptions.each {
-                String inputFlowName = it.inputFlow.name
-                List<String> supplierNames = it.suppliers.collect {it.process.name}
+            externalProcessInputFlowDescriptions.each {InputFlowDescription inputFlowDescription ->
+                String inputFlowName = inputFlowDescription.inputFlow.name
+                List<String> supplierNames = inputFlowDescription.suppliers.collect {it.function.name}
                 addExternalProcessesWithFlow(externalProcessesWithInputFlows, inputFlowName, supplierNames)
             }
             return externalProcessesWithInputFlows
@@ -322,9 +336,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private Map<String, List<String>> getExternalProcessesWithOutputFlows() {
             Map<String, List<String>> externalProcessesWithOutputFlows = new HashMap<>()
-            externalProcessOutputFlowDescriptions.each {
-                String outputFlowName = it.outputFlow.name
-                List<String> customerNames = it.customers.collect {it.process.name}
+            externalProcessOutputFlowDescriptions.each {OutputFlowDescription outputFlowDescription ->
+                String outputFlowName = outputFlowDescription.outputFlow.name
+                List<String> customerNames = outputFlowDescription.customers.collect {it.function.name}
                 addExternalProcessesWithFlow(externalProcessesWithOutputFlows, outputFlowName, customerNames)
             }
             return externalProcessesWithOutputFlows
@@ -348,7 +362,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void defineProcessSelectionModel() {
-            List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
+            List<Model> modelDecompositions = subprocess.function.object.getDecompositions()
                     .findAll {it.isModel()} as List<Model>
             processSelectionModel = modelDecompositions
                     .find {it.getModelTypeId() == PROCESS_SELECTION_MODEL_TYPE_ID}
@@ -360,11 +374,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            List<Model> modelDecompositions = subprocess.process.object.getDecompositions()
-                    .findAll {it.isModel()} as List<Model>
-            Model scenarioModel = modelDecompositions
-                    .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
-
+            Model scenarioModel = getScenarioModel(subprocess.function.object)
             if (scenarioModel) {
                 scenarios.add(new ScenarioDescription(scenarioModel))
             }
@@ -373,23 +383,36 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void defineScenariosViaProcessSelectionModel() {
             List<ObjectElement> scenarioObjects = processSelectionModel.getObjects()
                     .findAll {it.getSymbolId() == SCENARIO_SYMBOL_ID}
+
             scenarioObjects.each {ObjectElement scenarioObject ->
-                List<Model> modelDecompositions = scenarioObject.getDecompositions()
-                        .findAll {it.isModel()} as List<Model>
-                Model scenarioModel = modelDecompositions
-                        .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
+                Model scenarioModel = getScenarioModel(scenarioObject)
                 if (scenarioModel) {
-                    scenarios.add(new ScenarioDescription(scenarioModel))
+                    scenarios.add(new ScenarioDescription(scenarioModel, scenarioObject))
                 }
             }
+        }
+
+        private Model getScenarioModel(ObjectElement objectElement) {
+            List<Model> modelDecompositions = objectElement.getDecompositions()
+                    .findAll {it.isModel()} as List<Model>
+            Model scenarioModel = modelDecompositions
+                    .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
+            return scenarioModel
         }
     }
 
     private class ScenarioDescription {
-        Model scenario
+        CommonFunctionInfo scenario
+        Model model
 
-        ScenarioDescription(Model scenario) {
-            this.scenario = scenario
+        ScenarioDescription(Model model, ObjectElement scenarioObject) {
+            this.scenario = new CommonFunctionInfo(scenarioObject)
+            this.model = model
+        }
+
+        ScenarioDescription(Model model) {
+            this.scenario = new CommonFunctionInfo(model)
+            this.model = model
         }
     }
 
@@ -401,7 +424,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         SubprocessOwnerDescription(ObjectElement subprocessOwner, SubprocessOwnerType subprocessOwnerType) {
             this.subprocessOwner = subprocessOwner
-            this.name = getName(subprocessOwner)
+            this.name = getName(subprocessOwner.getObjectDefinition())
             this.type = subprocessOwnerType
 
             if (type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
@@ -432,39 +455,39 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             ObjectElement leadershipPositionObject = subprocessOwnerModelObject.getEnterEdges()
                     .find {it.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID}
                     .getSource() as ObjectElement
-            this.leadershipPosition = getName(leadershipPositionObject)
+            this.leadershipPosition = getName(leadershipPositionObject.getObjectDefinition())
         }
     }
 
     private class InputFlowDescription {
         CommonObjectInfo inputFlow
-        List<CommonProcessInfo> suppliers = []
+        List<CommonFunctionInfo> suppliers = []
 
         InputFlowDescription(ObjectElement inputFlow, List<ObjectElement> supplierObjects) {
             this.inputFlow = new CommonObjectInfo(inputFlow)
-            this.suppliers = supplierObjects.collect {new CommonProcessInfo(it)}
+            this.suppliers = supplierObjects.collect {new CommonFunctionInfo(it)}
         }
     }
 
     private class OutputFlowDescription {
         CommonObjectInfo outputFlow
-        public List<CommonProcessInfo> customers = []
+        public List<CommonFunctionInfo> customers = []
 
         OutputFlowDescription(ObjectElement outputFlow, List<ObjectElement> customerObjects) {
             this.outputFlow = new CommonObjectInfo(outputFlow)
-            this.customers = customerObjects.collect {new CommonProcessInfo(it)}
+            this.customers = customerObjects.collect {new CommonFunctionInfo(it)}
         }
     }
 
-    private static String getName(ObjectElement objectElement) {
-        ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
-        String name = objectDefinitionNode.getName()
+    private static String getName(TreeNode treeNode) {
+        Node node = treeNode._getNode()
+        String name = node.getName()
         name = name ? name : ''
         if (name) {
             findAbbreviations(name)
         }
 
-        String fullName = getAttributeValue(objectElement, FULL_NAME_ATTR_ID)
+        String fullName = getAttributeValue(treeNode, FULL_NAME_ATTR_ID)
         if (fullName) {
             findAbbreviations(fullName)
         }
@@ -486,9 +509,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
-    private static String getAttributeValue(ObjectElement objectElement, String attributeId) {
-        ObjectDefinitionNode objectDefinitionNode = objectElement.getObjectDefinition()._getNode() as ObjectDefinitionNode
-        AttributeValue attribute = objectDefinitionNode.getAttributes().stream()
+    private static String getAttributeValue(TreeNode treeNode, String attributeId) {
+        Node node = treeNode._getNode()
+        AttributeValue attribute = node.getAttributes().stream()
                 .filter { it.typeId == attributeId}
                 .findFirst()
                 .orElse(null)
