@@ -444,9 +444,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             scenarioObjects.each {ObjectElement scenarioObject ->
                 Model scenarioModel = getEPCModel(scenarioObject)
-                if (scenarioModel) {
-                    scenarios.add(new ScenarioDescription(scenarioModel, scenarioObject))
+
+                if (scenarioModel == null) {
+                    // TODO: что делать, если у какого-либо сценария нет декомпозиции?
+                    return
                 }
+
+                scenarios.add(new ScenarioDescription(scenarioModel, scenarioObject))
             }
         }
 
