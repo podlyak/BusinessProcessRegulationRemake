@@ -91,6 +91,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String FUNCTION_ALLOCATION_MODEL_TYPE_ID = 'MT_FUNC_ALLOC_DGM'
     private static final String PROCESS_SELECTION_MODEL_TYPE_ID = 'MT_PRCS_SLCT_DIA'
 
+    private static final String BUSINESS_ROLE_OBJECT_TYPE_ID = 'OT_PERS_TYPE'
     private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
     private static final String FUNCTION_OBJECT_TYPE_ID = 'OT_FUNC'
     private static final String GOAL_OBJECT_TYPE_ID = 'OT_OBJECTIVE'
@@ -105,11 +106,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     ]
     private static final String INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
+    private static final String ORGANIZATIONAL_UNIT_W_POSITION_EDGE_TYPE_ID = 'CT_IS_CRT_BY'
+    private static final String OUTPUT_FLOW_W_CUSTOMER_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final List<String> OWNER_W_SUBPROCESS_EDGE_TYPE_IDS = [
             'CT_EXEC_1',
             'CT_EXEC_2',
     ]
-    private static final String OUTPUT_FLOW_W_CUSTOMER_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
+    private static final String POSITION_W_BUSINESS_ROLE_EDGE_TYPE_ID = 'CT_EXEC_5'
     private static final String SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
     private static final String SUPPLIER_W_INPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
 
@@ -181,6 +184,56 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
+    private class BusinessRoleInfo {
+        CommonObjectInfo businessRole
+        List<PositionInfo> positions = []
+
+        BusinessRoleInfo(ObjectElement businessRole) {
+            this.businessRole = new CommonObjectInfo(businessRole)
+            definePositions()
+        }
+
+        private void definePositions() {
+            List<ObjectElement> businessRoleInstances = businessRole.object.getObjectDefinition().getInstances()
+            for (instance in businessRoleInstances) {
+                List<ObjectElement> positionObjects = instance.getEnterEdges()
+                        .findAll {it.getEdgeTypeId() == POSITION_W_BUSINESS_ROLE_EDGE_TYPE_ID}
+                        .collect {it.getSource() as ObjectElement}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                positions.addAll(positionObjects.collect {new PositionInfo(it)})
+            }
+        }
+    }
+
+    private class PositionInfo {
+        CommonObjectInfo position
+        // TODO: уточнить, одна ли ОЕ?
+        CommonObjectInfo organizationalUnit
+
+        PositionInfo(ObjectElement position) {
+            this.position = new CommonObjectInfo(position)
+            defineOrganizationalUnit()
+        }
+
+        private void defineOrganizationalUnit() {
+            List<ObjectElement> positionInstances = position.object.getObjectDefinition().getInstances()
+            for (instance in positionInstances) {
+                ObjectElement organizationalUnitObject = instance.getEnterEdges()
+                        .findAll {it.getEdgeTypeId() == ORGANIZATIONAL_UNIT_W_POSITION_EDGE_TYPE_ID}
+                        .collect {it.getSource() as ObjectElement}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                        .stream()
+                        .findFirst()
+                        .orElse(null)
+
+                if (organizationalUnitObject) {
+                    organizationalUnit = new CommonObjectInfo(organizationalUnitObject)
+                    break
+                }
+            }
+        }
+    }
+
     private class SubprocessDescription {
         CommonFunctionInfo subprocess
         CommonFunctionInfo parentProcess = null
@@ -236,10 +289,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void defineGoals() {
-            List<Model> modelDecompositions = subprocess.function.object.getDecompositions()
-                    .findAll {it.isModel()} as List<Model>
-            Model functionAllocationModel = modelDecompositions
-                    .find {it.getModelTypeId() == FUNCTION_ALLOCATION_MODEL_TYPE_ID}
+            Model functionAllocationModel = subprocess.function.object.getObjectDefinition()
+                    .getDecompositions(FUNCTION_ALLOCATION_MODEL_TYPE_ID)
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
 
             if (functionAllocationModel == null) {
                 return
@@ -363,10 +417,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void defineProcessSelectionModel() {
-            List<Model> modelDecompositions = subprocess.function.object.getDecompositions()
-                    .findAll {it.isModel()} as List<Model>
-            processSelectionModel = modelDecompositions
-                    .find {it.getModelTypeId() == PROCESS_SELECTION_MODEL_TYPE_ID}
+            processSelectionModel = subprocess.function.object.getObjectDefinition()
+                    .getDecompositions(PROCESS_SELECTION_MODEL_TYPE_ID)
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
         }
 
         private void defineScenarios() {
@@ -398,11 +453,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void defineProcedures() {
             scenarios.each {it.defineProcedures()}
         }
+
+        private void findBusinessRoles() {
+            scenarios.each {it.findBusinessRoles()}
+        }
     }
 
     private class ScenarioDescription {
         EPCDescription scenario
-        List<EPCDescription> procedures = []
+        List<ProcedureDescription> procedures = []
 
         ScenarioDescription(Model model, ObjectElement functionObject) {
             this.scenario = new EPCDescription(model, functionObject)
@@ -426,8 +485,29 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     return
                 }
 
-                procedures.add(new EPCDescription(procedureModel, procedureObject))
+                procedures.add(new ProcedureDescription(procedureModel, procedureObject))
             }
+        }
+
+        private void findBusinessRoles() {
+            procedures.each {it.findBusinessRoles()}
+        }
+    }
+
+    private class ProcedureDescription {
+        EPCDescription procedure
+        List<BusinessRoleInfo> businessRoles = []
+
+        ProcedureDescription(Model model, ObjectElement functionObject) {
+            this.procedure = new EPCDescription(model, functionObject)
+        }
+
+        private void findBusinessRoles() {
+            List<ObjectElement> businessRoleObjects = procedure.model.getObjects()
+                    .findAll {it.getObjectDefinition().getObjectTypeId() == BUSINESS_ROLE_OBJECT_TYPE_ID}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinition().getId() })
+                    .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+            businessRoles = businessRoleObjects.collect {new BusinessRoleInfo(it)}
         }
     }
 
@@ -554,11 +634,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private static Model getEPCModel(ObjectElement objectElement) {
-        List<Model> modelDecompositions = objectElement.getDecompositions()
-                .findAll {it.isModel()} as List<Model>
-        Model epcModel = modelDecompositions
-                .find {it.getModelTypeId() == EPC_MODEL_TYPE_ID}
-        return epcModel
+        return objectElement.getObjectDefinition()
+                .getDecompositions(EPC_MODEL_TYPE_ID)
+                .stream()
+                .findFirst()
+                .orElse(null)
     }
 
     @Override
@@ -577,7 +657,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private void parseParameters() {
         if (debug) {
-            detailLevel = 3
+            detailLevel = 4
             docVersion = '1.0.0'
             docDate = '01.01.2025'
             return
@@ -678,6 +758,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         subProcessDescriptions.each {it.defineProcessSelectionModel()}
         subProcessDescriptions.each {it.defineScenarios()}
+
+        if (detailLevel == 4) {
+            subProcessDescriptions.each { it.defineProcedures() }
+            subProcessDescriptions.each { it.findBusinessRoles() }
+        }
 
         return subProcessDescriptions
     }
