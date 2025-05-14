@@ -25,6 +25,7 @@ import java.time.LocalDate
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
+@SuppressWarnings('unused')
 void execute() {
     new BusinessProcessRegulationRemakeScript(context: context).execute()
 }
@@ -122,6 +123,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     // TODO: переименовать??? и уточнить по просто внешнему, а не смежному
     private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
+    private static final String NORMATIVE_DOCUMENT_SYMBOL_ID = '7096d320-cf42-11e2-69e4-ac8112d1b401'
     // TODO: уточнить по другим типам символа сценария
     private static final String SCENARIO_SYMBOL_ID = 'ST_SCENARIO'
 
@@ -184,27 +186,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
-    private class BusinessRoleInfo {
-        CommonObjectInfo businessRole
-        List<PositionInfo> positions = []
-
-        BusinessRoleInfo(ObjectElement businessRole) {
-            this.businessRole = new CommonObjectInfo(businessRole)
-            definePositions()
-        }
-
-        private void definePositions() {
-            List<ObjectElement> businessRoleInstances = businessRole.object.getObjectDefinition().getInstances()
-            for (instance in businessRoleInstances) {
-                List<ObjectElement> positionObjects = instance.getEnterEdges()
-                        .findAll {it.getEdgeTypeId() == POSITION_W_BUSINESS_ROLE_EDGE_TYPE_ID}
-                        .collect {it.getSource() as ObjectElement}
-                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
-                positions.addAll(positionObjects.collect {new PositionInfo(it)})
-            }
-        }
-    }
-
     private class PositionInfo {
         CommonObjectInfo position
         // TODO: уточнить, одна ли ОЕ?
@@ -231,6 +212,37 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     break
                 }
             }
+        }
+    }
+
+    private class BusinessRoleInfo {
+        CommonObjectInfo businessRole
+        List<PositionInfo> positions = []
+
+        BusinessRoleInfo(ObjectElement businessRole) {
+            this.businessRole = new CommonObjectInfo(businessRole)
+            definePositions()
+        }
+
+        private void definePositions() {
+            List<ObjectElement> businessRoleInstances = businessRole.object.getObjectDefinition().getInstances()
+            for (instance in businessRoleInstances) {
+                List<ObjectElement> positionObjects = instance.getEnterEdges()
+                        .findAll {it.getEdgeTypeId() == POSITION_W_BUSINESS_ROLE_EDGE_TYPE_ID}
+                        .collect {it.getSource() as ObjectElement}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getId() })
+                positions.addAll(positionObjects.collect {new PositionInfo(it)})
+            }
+        }
+    }
+
+    private class NormativeDocumentInfo {
+        CommonObjectInfo document
+        String requisites
+
+        NormativeDocumentInfo(ObjectElement document) {
+            this.document = new CommonObjectInfo(document)
+            this.requisites = getAttributeValue(document.getObjectDefinition(), DESCRIPTION_DEFINITION_ATTR_ID)
         }
     }
 
@@ -458,8 +470,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             scenarios.each {it.defineProcedures()}
         }
 
-        private void findBusinessRoles() {
-            scenarios.each {it.findBusinessRoles()}
+        private void defineBusinessRoles() {
+            scenarios.each {it.defineBusinessRoles()}
         }
     }
 
@@ -493,8 +505,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void findBusinessRoles() {
+        private void defineBusinessRoles() {
             procedures.each {it.findBusinessRoles()}
+        }
+
+        private List<BusinessRoleInfo> getAllRoles() {
+            List<BusinessRoleInfo> allRoles = []
+            procedures.each {ProcedureDescription procedure ->
+                allRoles.addAll(procedure.businessRoles)
+            }
+            return allRoles.unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinition().getId() })
         }
     }
 
@@ -518,6 +538,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private class EPCDescription {
         CommonFunctionInfo functionInfo
         Model model
+        List<NormativeDocumentInfo> normativeDocuments = []
 
         EPCDescription(Model model, ObjectElement functionObject) {
             this.functionInfo = new CommonFunctionInfo(functionObject)
@@ -527,6 +548,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         EPCDescription(Model model) {
             this.functionInfo = new CommonFunctionInfo(model)
             this.model = model
+        }
+
+        private void findNormativeDocuments () {
+            List<ObjectElement> normativeDocumentObjects = model.getObjects()
+                    .findAll {it.getSymbolId() == NORMATIVE_DOCUMENT_SYMBOL_ID}
+                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinition().getId() })
+            normativeDocuments = normativeDocumentObjects.collect {new NormativeDocumentInfo(it)}
         }
     }
 
@@ -718,6 +746,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         Set<String> abbreviationNames = fullAbbreviations.keySet()
+        //noinspection RegExpUnnecessaryNonCapturingGroup
         abbreviationsPattern = Pattern.compile("\\b(?:(?:${String.join(')|(?:', abbreviationNames)}))\\b")
     }
 
@@ -765,7 +794,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         if (detailLevel == 4) {
             subProcessDescriptions.each { it.defineProcedures() }
-            subProcessDescriptions.each { it.findBusinessRoles() }
+            subProcessDescriptions.each { it.defineBusinessRoles() }
         }
 
         return subProcessDescriptions
