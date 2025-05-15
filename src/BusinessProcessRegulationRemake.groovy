@@ -90,20 +90,45 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private static final String EPC_MODEL_TYPE_ID = 'MT_EEPC'
     private static final String FUNCTION_ALLOCATION_MODEL_TYPE_ID = 'MT_FUNC_ALLOC_DGM'
+    private static final String IEF_DATA_MODEL_TYPE_ID = 'MT_IEF_DATA_MDL'
+    private static final String INFORMATION_CARRIER_MODEL_TYPE_ID = 'MT_INFO_CARR_DGM'
+    private static final String ORGANIZATION_STRUCTURE_MODEL_TYPE_ID = 'MT_ORG_CHRT'
     private static final String PROCESS_SELECTION_MODEL_TYPE_ID = 'MT_PRCS_SLCT_DIA'
 
+    private static final List<String> DOCUMENT_COLLECTION_MODEL_TYPE_IDS = [
+            IEF_DATA_MODEL_TYPE_ID,
+            INFORMATION_CARRIER_MODEL_TYPE_ID,
+    ]
+
     private static final String BUSINESS_ROLE_OBJECT_TYPE_ID = 'OT_PERS_TYPE'
+    private static final String CLUSTER_DATA_MODEL_OBJECT_TYPE_ID = 'OT_CLST'
     private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
     private static final String FUNCTION_OBJECT_TYPE_ID = 'OT_FUNC'
     private static final String GOAL_OBJECT_TYPE_ID = 'OT_OBJECTIVE'
     private static final String GROUP_OBJECT_TYPE_ID = 'OT_GRP'
+    private static final String INFORMATION_CARRIER_OBJECT_TYPE_ID = 'OT_INFO_CARR'
     private static final String ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
 
+    private static final List<String> DOCUMENT_COLLECTION_OBJECT_TYPE_IDS = [
+            CLUSTER_DATA_MODEL_OBJECT_TYPE_ID,
+            INFORMATION_CARRIER_OBJECT_TYPE_ID,
+    ]
+
     private static final List<String> ABBREVIATIONS_EDGE_TYPE_IDS = [
-            'CT_IS_IN_RELSHP_TO_1',
-            'CT_REFS_TO_2',
-            'CT_HAS_REL_WITH',
             'CT_IS_IN_RELSHP_TO',
+            'CT_IS_IN_RELSHP_TO_1',
+            'CT_HAS_REL_WITH',
+            'CT_REFS_TO_2',
+    ]
+    private static final List<String> CLUSTER_GROUP_W_CLUSTER_DATA_MODEL_EDGE_TYPE_IDS = [
+            'CT_CONS_OF_1',
+            'CT_CONS_OF_2',
+    ]
+    private static final List<String> DOCUMENT_COLLECTION_W_DOCUMENT_EDGE_TYPE_IDS = [
+            'CT_CAN_SUBS_2',
+            'CT_SUBS_1',
+            'CT_SUBS_3',
+            'CT_SUBS_5',
     ]
     private static final String INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
@@ -236,13 +261,76 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
-    private class NormativeDocumentInfo {
+    private class DocumentInfo {
         CommonObjectInfo document
+        String type
+
+        DocumentInfo(ObjectElement document) {
+            this.document = new CommonObjectInfo(document)
+            this.type = document.getSymbol().name
+        }
+    }
+
+    private class NormativeDocumentInfo {
+        DocumentInfo document
         String requisites
 
         NormativeDocumentInfo(ObjectElement document) {
-            this.document = new CommonObjectInfo(document)
+            this.document = new DocumentInfo(document)
             this.requisites = getAttributeValue(document.getObjectDefinition(), DESCRIPTION_DEFINITION_ATTR_ID)
+        }
+    }
+
+    private class DocumentCollectionInfo {
+        DocumentInfo collection
+        Model model
+        List<DocumentInfo> containedDocuments = []
+
+        DocumentCollectionInfo(ObjectElement collection, Model model) {
+            this.collection = new DocumentInfo(collection)
+            this.model = model
+        }
+
+        DocumentCollectionInfo(DocumentInfo collection, Model model) {
+            this.collection = collection
+            this.model = model
+        }
+
+        private void findContainedDocuments () {
+            ObjectElement collectionObjectOnModel = model.findObjectInstances(collection.document.object.getObjectDefinition())
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
+
+            if (collectionObjectOnModel == null) {
+                return
+            }
+
+            // TODO: обсудить логику определения состава коллекции (пример с отсутсвием связей для части доков на модели; c неправильным направлением связи)
+            String modelTypeId = model.getModelTypeId()
+
+            List<ObjectElement> containedDocumentObjects = []
+            if (modelTypeId == IEF_DATA_MODEL_TYPE_ID) {
+                containedDocumentObjects.addAll(collectionObjectOnModel.getExitEdges()
+                        .findAll {it.getEdgeTypeId() in CLUSTER_GROUP_W_CLUSTER_DATA_MODEL_EDGE_TYPE_IDS}
+                        .collect {it.getTarget() as ObjectElement}
+                        .findAll {it.getObjectDefinition().getObjectTypeId() == CLUSTER_DATA_MODEL_OBJECT_TYPE_ID}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinitionId() })
+                        .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+                )
+            }
+
+            if (modelTypeId == INFORMATION_CARRIER_MODEL_TYPE_ID) {
+                containedDocumentObjects.addAll(collectionObjectOnModel.getExitEdges()
+                        .findAll {it.getEdgeTypeId() in DOCUMENT_COLLECTION_W_DOCUMENT_EDGE_TYPE_IDS}
+                        .collect {it.getTarget() as ObjectElement}
+                        .findAll {it.getObjectDefinition().getObjectTypeId() == INFORMATION_CARRIER_OBJECT_TYPE_ID}
+                        .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinitionId() })
+                        .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
+                )
+            }
+
+            containedDocuments = containedDocumentObjects.collect {new DocumentInfo(it)}
         }
     }
 
@@ -284,8 +372,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            ObjectElement parentElement = parentModel.getObjects()
-                    .find {it.getObjectDefinition().getId() == parentObject.getId()}
+            ObjectElement parentElement = parentModel.findObjectInstances(parentObject)
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
             this.parentProcess = new CommonFunctionInfo(parentElement)
         }
 
@@ -311,14 +401,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            List<ObjectElement> goalObjects = functionAllocationModel.getObjects()
-                    .findAll {it.getObjectDefinition().getObjectTypeId() == GOAL_OBJECT_TYPE_ID}
+            List<ObjectElement> goalObjects = functionAllocationModel.findObjectsByType(GOAL_OBJECT_TYPE_ID)
             goals = goalObjects.collect {new CommonObjectInfo(it)}
         }
 
         private void findExternalProcessInputFlows() {
-            List<ObjectElement> allFlowObjects = subprocess.function.object.model.getObjects()
-                    .findAll {it.getObjectDefinition().getObjectTypeId() == FLOW_OBJECT_TYPE_ID}
+            List<ObjectElement> allFlowObjects = subprocess.function.object.model.findObjectsByType(FLOW_OBJECT_TYPE_ID)
 
             List<ObjectElement> inputFlowObjects = subprocess.function.object.getEnterEdges()
                     .findAll {it.getEdgeTypeId() == INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID}
@@ -338,7 +426,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 List<ObjectElement> additionalExternalSupplierObjects = findAdditionalExternalSupplierObjects(currentFlowObject, allFlowObjects)
                 externalSupplierObjects.addAll(additionalExternalSupplierObjects)
                 externalSupplierObjects = externalSupplierObjects
-                        .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinition().getId() })
+                        .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinitionId() })
                         .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
 
                 if (externalSupplierObjects) {
@@ -348,9 +436,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private List<ObjectElement> findAdditionalExternalSupplierObjects(ObjectElement currentFlowObject, List<ObjectElement> allFlowObjects) {
-            String currentFlowObjectDefinitionId = currentFlowObject.getObjectDefinition().getId()
+            String currentFlowObjectDefinitionId = currentFlowObject.getObjectDefinitionId()
             List<ObjectElement> currentFlowObjects = allFlowObjects
-                    .findAll {it.getObjectDefinition().getId() == currentFlowObjectDefinitionId}
+                    .findAll {it.getObjectDefinitionId() == currentFlowObjectDefinitionId}
 
             List<ObjectElement> additionalExternalSupplierObjects = []
             for (flowObject in currentFlowObjects) {
@@ -488,8 +576,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void defineProcedures() {
-            List<ObjectElement> procedureObjects = scenario.model.getObjects()
-                    .findAll {it.getObjectDefinition().getObjectTypeId() == FUNCTION_OBJECT_TYPE_ID}
+            List<ObjectElement> procedureObjects = scenario.model.findObjectsByType(FUNCTION_OBJECT_TYPE_ID)
                     .unique(Comparator.comparing { ObjectElement o -> o.getId() })
                     .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
 
@@ -514,7 +601,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             procedures.each {ProcedureDescription procedure ->
                 allRoles.addAll(procedure.businessRoles)
             }
-            return allRoles.unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinition().getId() })
+            return allRoles.unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId() })
         }
     }
 
@@ -527,9 +614,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void findBusinessRoles() {
-            List<ObjectElement> businessRoleObjects = procedure.model.getObjects()
-                    .findAll {it.getObjectDefinition().getObjectTypeId() == BUSINESS_ROLE_OBJECT_TYPE_ID}
-                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinition().getId() })
+            List<ObjectElement> businessRoleObjects = procedure.model.findObjectsByType(BUSINESS_ROLE_OBJECT_TYPE_ID)
+                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinitionId() })
                     .sort {o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2)}
             businessRoles = businessRoleObjects.collect {new BusinessRoleInfo(it)}
         }
@@ -539,6 +625,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         CommonFunctionInfo functionInfo
         Model model
         List<NormativeDocumentInfo> normativeDocuments = []
+        List<DocumentCollectionInfo> documentCollections = []
 
         EPCDescription(Model model, ObjectElement functionObject) {
             this.functionInfo = new CommonFunctionInfo(functionObject)
@@ -553,20 +640,40 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void findNormativeDocuments () {
             List<ObjectElement> normativeDocumentObjects = model.getObjects()
                     .findAll {it.getSymbolId() == NORMATIVE_DOCUMENT_SYMBOL_ID}
-                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinition().getId() })
+                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinitionId() })
             normativeDocuments = normativeDocumentObjects.collect {new NormativeDocumentInfo(it)}
+        }
+
+        private void findDocumentCollections () {
+            List<ObjectElement> documentCollectionObjects = model.getObjects()
+                    .findAll { it.getObjectDefinition().getObjectTypeId() in DOCUMENT_COLLECTION_OBJECT_TYPE_IDS }
+                    .unique(Comparator.comparing { ObjectElement o -> o.getObjectDefinitionId() })
+                    .sort { o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2) }
+
+            documentCollectionObjects.each {ObjectElement documentCollectionObject ->
+                List <Model> documentCollectionObjectModels = documentCollectionObject.getDecompositions()
+                        .findAll {it.isModel()} as List <Model>
+                Model documentCollectionModel = documentCollectionObjectModels
+                        .findAll {it.getModelTypeId() in DOCUMENT_COLLECTION_MODEL_TYPE_IDS}
+                        .stream()
+                        .findFirst()
+                        .orElse(null)
+
+                // TODO: обсудить логику определения набора документов (пример ошибки с типом символа)
+                if (documentCollectionModel) {
+                    documentCollections.add(new DocumentCollectionInfo(documentCollectionObject, documentCollectionModel))
+                }
+            }
         }
     }
 
     private class SubprocessOwnerDescription {
-        ObjectElement subprocessOwner
-        String name
+        CommonObjectInfo subprocessOwner
         SubprocessOwnerType type
         String leadershipPosition = null
 
         SubprocessOwnerDescription(ObjectElement subprocessOwner, SubprocessOwnerType subprocessOwnerType) {
-            this.subprocessOwner = subprocessOwner
-            this.name = getName(subprocessOwner.getObjectDefinition())
+            this.subprocessOwner = new CommonObjectInfo(subprocessOwner)
             this.type = subprocessOwnerType
 
             if (type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
@@ -575,20 +682,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private void defineLeadershipPosition() {
-            String subprocessOwnerObjectDefinitionId = subprocessOwner.getObjectDefinition().getId()
-            Model subprocessOwnerModel = subprocessOwner.getDecompositions()
-                    .findAll {it.isModel()}
+            ObjectDefinition subprocessOwnerObjectDefinition = subprocessOwner.object.getObjectDefinition()
+            Model subprocessOwnerModel = subprocessOwnerObjectDefinition
+                    .getDecompositions(ORGANIZATION_STRUCTURE_MODEL_TYPE_ID)
                     .stream()
                     .findFirst()
                     .orElse(null)
-                    as Model
 
             if (subprocessOwnerModel == null) {
                 return
             }
 
-            ObjectElement subprocessOwnerModelObject = subprocessOwnerModel.getObjects()
-                    .find {it.getObjectDefinition().getId() == subprocessOwnerObjectDefinitionId}
+            ObjectElement subprocessOwnerModelObject = subprocessOwnerModel.findObjectInstances(subprocessOwnerObjectDefinition)
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
 
             if (subprocessOwnerModelObject == null) {
                 return
@@ -624,7 +732,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static String getName(TreeNode treeNode) {
         Node node = treeNode._getNode()
         String name = node.getName()
-        name = name ? name : ''
+        name = name ? trimStringValue(name) : ''
         if (name) {
             findAbbreviations(name)
         }
@@ -659,10 +767,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 .orElse(null)
 
         if (attribute != null && attribute.value != null && !attribute.value.trim().isEmpty()) {
-            return attribute.value
+            return trimStringValue(attribute.value)
         }
 
         return ''
+    }
+
+    private static String trimStringValue(String value) {
+        String resultString = value.replaceAll("\\u00A0", " ").trim()
+        resultString = resultString.replaceAll("[\\s\\n]+", " ").trim()
+        return resultString
     }
 
     private static Model getEPCModel(ObjectElement objectElement) {
@@ -710,9 +824,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             throw new SilaScriptException("Неверный ID модели аббревиатур [${ABBREVIATIONS_MODEL_ID}]")
         }
 
-        List<ObjectElement> allObjects = abbreviationsModel.getObjects()
-        ObjectElement abbreviationsRootObject = allObjects
-                .find {it.getObjectDefinition().getId() == ABBREVIATIONS_ROOT_OBJECT_ID}
+        ObjectElement abbreviationsRootObject = abbreviationsModel.getObjects()
+                .find {it.getObjectDefinitionId() == ABBREVIATIONS_ROOT_OBJECT_ID}
 
         if (!abbreviationsRootObject) {
             throw new SilaScriptException("Неверный ID корневого объекта аббревиатур [${ABBREVIATIONS_ROOT_OBJECT_ID}]")
@@ -795,6 +908,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         if (detailLevel == 4) {
             subProcessDescriptions.each { it.defineProcedures() }
             subProcessDescriptions.each { it.defineBusinessRoles() }
+        }
+
+        for (subProcessDescription in subProcessDescriptions) {
+            for (scenarioDescription in subProcessDescription.scenarios) {
+                scenarioDescription.scenario.findNormativeDocuments()
+                scenarioDescription.scenario.findDocumentCollections()
+
+                for (documentCollection in scenarioDescription.scenario.documentCollections) {
+                    documentCollection.findContainedDocuments()
+                }
+            }
         }
 
         return subProcessDescriptions
