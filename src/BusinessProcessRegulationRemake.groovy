@@ -358,6 +358,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         List<ExternalProcessDescription> externalProcessesWithInputFlows = []
         List<ExternalProcessDescription> externalProcessesWithOutputFlows = []
+        List<BusinessRoleInfo> fullBusinessRoles = []
         List<EPCDescription> analyzedEPC = []
         List<DocumentCollectionInfo> fullDocumentCollections = []
 
@@ -577,6 +578,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             scenarios.each {it.defineBusinessRoles()}
         }
 
+        private void buildFullBusinessRoles() {
+            scenarios.each {ScenarioDescription scenarioDescription ->
+                fullBusinessRoles.addAll(scenarioDescription.getAllBusinessRoles())
+            }
+            fullBusinessRoles = fullBusinessRoles
+                    .unique(Comparator.comparing {BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId()})
+        }
+
         private void identifyAnalyzedEPC() {
             if (detailLevel == 3) {
                 for (scenario in scenarios) {
@@ -670,12 +679,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             procedures.each {it.findBusinessRoles()}
         }
 
-        private List<BusinessRoleInfo> getAllRoles() {
-            List<BusinessRoleInfo> allRoles = []
+        private List<BusinessRoleInfo> getAllBusinessRoles() {
+            List<BusinessRoleInfo> allBusinessRoles = []
             procedures.each {ProcedureDescription procedure ->
-                allRoles.addAll(procedure.businessRoles)
+                allBusinessRoles.addAll(procedure.businessRoles)
             }
-            return allRoles.unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId() })
+            return allBusinessRoles.unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId() })
         }
     }
 
@@ -982,6 +991,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         if (detailLevel == 4) {
             subprocessDescription.defineProcedures()
             subprocessDescription.defineBusinessRoles()
+            subprocessDescription.buildFullBusinessRoles()
         }
 
         subprocessDescription.identifyAnalyzedEPC()
