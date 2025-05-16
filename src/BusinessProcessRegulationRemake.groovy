@@ -335,6 +335,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private class SubprocessDescription {
+        private class ExternalProcessDescription {
+            CommonFunctionInfo externalProcess
+            List<CommonObjectInfo> flows
+
+            ExternalProcessDescription(CommonFunctionInfo externalProcess, List<CommonObjectInfo> flows) {
+                this.externalProcess = externalProcess
+                this.flows = flows
+            }
+        }
+
         CommonFunctionInfo subprocess
         int detailLevel
 
@@ -346,6 +356,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         Model processSelectionModel = null
         List<ScenarioDescription> scenarios = []
 
+        List<ExternalProcessDescription> externalProcessesWithInputFlows = []
+        List<ExternalProcessDescription> externalProcessesWithOutputFlows = []
         List<EPCDescription> analyzedEPC = []
         List<DocumentCollectionInfo> fullDocumentCollections = []
 
@@ -485,39 +497,36 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private Map<String, List<String>> getExternalProcessesWithInputFlows() {
-            Map<String, List<String>> externalProcessesWithInputFlows = new HashMap<>()
+        private void buildExternalProcessesWithInputFlows() {
             externalProcessInputFlowDescriptions.each {InputFlowDescription inputFlowDescription ->
-                String inputFlowName = inputFlowDescription.inputFlow.name
-                List<String> supplierNames = inputFlowDescription.suppliers.collect {it.function.name}
-                addExternalProcessesWithFlow(externalProcessesWithInputFlows, inputFlowName, supplierNames)
+                addExternalProcessesWithFlow(inputFlowDescription.inputFlow, inputFlowDescription.suppliers, externalProcessesWithInputFlows)
             }
-            return externalProcessesWithInputFlows
         }
 
-        private Map<String, List<String>> getExternalProcessesWithOutputFlows() {
-            Map<String, List<String>> externalProcessesWithOutputFlows = new HashMap<>()
+        private void buildExternalProcessesWithOutputFlows() {
             externalProcessOutputFlowDescriptions.each {OutputFlowDescription outputFlowDescription ->
-                String outputFlowName = outputFlowDescription.outputFlow.name
-                List<String> customerNames = outputFlowDescription.customers.collect {it.function.name}
-                addExternalProcessesWithFlow(externalProcessesWithOutputFlows, outputFlowName, customerNames)
+                addExternalProcessesWithFlow(outputFlowDescription.outputFlow, outputFlowDescription.customers, externalProcessesWithOutputFlows)
             }
-            return externalProcessesWithOutputFlows
         }
 
-        private void addExternalProcessesWithFlow(Map<String, List<String>> externalProcessesWithFlows, String flowName, List<String> processNames) {
-            for (processName in processNames) {
-                if (processName in externalProcessesWithFlows.keySet()) {
-                    List<String> currentProcessNameValues = externalProcessesWithFlows.get(processName)
+        private void addExternalProcessesWithFlow(CommonObjectInfo flow, List<CommonFunctionInfo> externalProcesses, List<ExternalProcessDescription> externalProcessesWithFlows) {
+            for (process in externalProcesses) {
+                List<String> addedProcessObjectDefinitionIds = externalProcessesWithFlows.collect {it.externalProcess.function.object.getObjectDefinitionId()}
+                String processObjectDefinitionId = process.function.object.getObjectDefinitionId()
 
-                    if (flowName in currentProcessNameValues) {
+                if (processObjectDefinitionId in addedProcessObjectDefinitionIds) {
+                    ExternalProcessDescription processDescription = externalProcessesWithFlows
+                            .find {it.externalProcess.function.object.getObjectDefinitionId() == processObjectDefinitionId}
+
+                    List<String> addedFlowObjectDefinitionIds = processDescription.flows.collect {it.object.getObjectDefinitionId()}
+                    if (flow.object.getObjectDefinitionId() in addedFlowObjectDefinitionIds) {
                         continue
                     }
 
-                    currentProcessNameValues.add(flowName)
+                    processDescription.flows.add(flow)
                 }
                 else {
-                    externalProcessesWithFlows.put(processName, [flowName])
+                    externalProcessesWithFlows.add(new ExternalProcessDescription(process, [flow]))
                 }
             }
         }
@@ -960,17 +969,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         subProcessDescriptions.each {it.defineGoals()}
         subProcessDescriptions.each {it.findExternalProcessInputFlows()}
         subProcessDescriptions.each {it.findExternalProcessOutputFlows()}
-
-//        List<Map<String, List<String>>> externalProcessesWithInputFlows = []
-//        subProcessDescriptions.each {
-//            externalProcessesWithInputFlows.add(it.getExternalProcessesWithInputFlows())
-//        }
-//
-//        List<Map<String, List<String>>> externalProcessesWithOutputFlows = []
-//        subProcessDescriptions.each {
-//            externalProcessesWithOutputFlows.add(it.getExternalProcessesWithOutputFlows())
-//        }
-
+        subProcessDescriptions.each {it.buildExternalProcessesWithInputFlows()}
+        subProcessDescriptions.each {it.buildExternalProcessesWithOutputFlows()}
         subProcessDescriptions.each {it.defineProcessSelectionModel()}
         subProcessDescriptions.each {it.defineScenarios()}
 
