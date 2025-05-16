@@ -357,11 +357,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         Model processSelectionModel = null
         List<ScenarioDescription> scenarios = []
 
-        List<ExternalProcessDescription> externalProcessesWithInputFlows = []
-        List<ExternalProcessDescription> externalProcessesWithOutputFlows = []
-        List<BusinessRoleInfo> fullBusinessRoles = []
+        List<ExternalProcessDescription> completedExternalProcessesWithInputFlows = []
+        List<ExternalProcessDescription> completedExternalProcessesWithOutputFlows = []
+        List<BusinessRoleInfo> completedBusinessRoles = []
         List<EPCDescription> analyzedEPC = []
-        List<DocumentCollectionInfo> fullDocumentCollections = []
+        List<DocumentCollectionInfo> completedDocumentCollections = []
+        List<NormativeDocumentInfo> completedNormativeDocuments = []
 
         SubprocessDescription(ObjectElement subprocess, int detailLevel) {
             this.subprocess = new CommonFunctionInfo(subprocess)
@@ -499,36 +500,36 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        void buildExternalProcessesWithInputFlows() {
+        void completeExternalProcessesWithInputFlows() {
             externalProcessInputFlowDescriptions.each { InputFlowDescription inputFlowDescription ->
-                addExternalProcessesWithFlow(inputFlowDescription.inputFlow, inputFlowDescription.suppliers, externalProcessesWithInputFlows)
+                addExternalProcessesWithFlow(inputFlowDescription.inputFlow, inputFlowDescription.suppliers, completedExternalProcessesWithInputFlows)
             }
         }
 
-        void buildExternalProcessesWithOutputFlows() {
+        void completeExternalProcessesWithOutputFlows() {
             externalProcessOutputFlowDescriptions.each { OutputFlowDescription outputFlowDescription ->
-                addExternalProcessesWithFlow(outputFlowDescription.outputFlow, outputFlowDescription.customers, externalProcessesWithOutputFlows)
+                addExternalProcessesWithFlow(outputFlowDescription.outputFlow, outputFlowDescription.customers, completedExternalProcessesWithOutputFlows)
             }
         }
 
-        private void addExternalProcessesWithFlow(CommonObjectInfo flow, List<CommonFunctionInfo> externalProcesses, List<ExternalProcessDescription> externalProcessesWithFlows) {
+        private void addExternalProcessesWithFlow(CommonObjectInfo flow, List<CommonFunctionInfo> externalProcesses, List<ExternalProcessDescription> completedExternalProcessesWithFlows) {
             for (process in externalProcesses) {
-                List<String> addedProcessObjectDefinitionIds = externalProcessesWithFlows.collect { ExternalProcessDescription ePWF -> ePWF.externalProcess.function.object.getObjectDefinitionId() }
+                List<String> completedProcessObjectDefinitionIds = completedExternalProcessesWithFlows.collect { ExternalProcessDescription ePWF -> ePWF.externalProcess.function.object.getObjectDefinitionId() }
                 String processObjectDefinitionId = process.function.object.getObjectDefinitionId()
 
-                if (processObjectDefinitionId in addedProcessObjectDefinitionIds) {
-                    ExternalProcessDescription processDescription = externalProcessesWithFlows
+                if (processObjectDefinitionId in completedProcessObjectDefinitionIds) {
+                    ExternalProcessDescription processDescription = completedExternalProcessesWithFlows
                             .find { ExternalProcessDescription ePWF -> ePWF.externalProcess.function.object.getObjectDefinitionId() == processObjectDefinitionId }
 
-                    List<String> addedFlowObjectDefinitionIds = processDescription.flows.collect { CommonObjectInfo f -> f.object.getObjectDefinitionId() }
-                    if (flow.object.getObjectDefinitionId() in addedFlowObjectDefinitionIds) {
+                    List<String> completedFlowObjectDefinitionIds = processDescription.flows.collect { CommonObjectInfo f -> f.object.getObjectDefinitionId() }
+                    if (flow.object.getObjectDefinitionId() in completedFlowObjectDefinitionIds) {
                         continue
                     }
 
                     processDescription.flows.add(flow)
                 }
                 else {
-                    externalProcessesWithFlows.add(new ExternalProcessDescription(process, [flow]))
+                    completedExternalProcessesWithFlows.add(new ExternalProcessDescription(process, [flow]))
                 }
             }
         }
@@ -579,11 +580,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             scenarios.each { ScenarioDescription scenarioDescription -> scenarioDescription.defineBusinessRoles() }
         }
 
-        void buildFullBusinessRoles() {
+        void completeBusinessRoles() {
             scenarios.each { ScenarioDescription scenarioDescription ->
-                fullBusinessRoles.addAll(scenarioDescription.getAllBusinessRoles())
+                completedBusinessRoles.addAll(scenarioDescription.getAllBusinessRoles())
             }
-            fullBusinessRoles = fullBusinessRoles
+            completedBusinessRoles = completedBusinessRoles
                     .unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId() })
         }
 
@@ -607,38 +608,46 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             analyzedEPC.each { EPCDescription epcDescription -> epcDescription.findNormativeDocuments() }
         }
 
+        void completeNormativeDocuments() {
+            analyzedEPC.each { EPCDescription epcDescription ->
+                completedNormativeDocuments.addAll(epcDescription.normativeDocuments)
+            }
+            completedNormativeDocuments = completedNormativeDocuments
+                    .unique(Comparator.comparing { NormativeDocumentInfo nDI -> nDI.document.document.object.getObjectDefinitionId() })
+        }
+
         void defineDocumentCollections() {
             analyzedEPC.each { EPCDescription epcDescription -> epcDescription.findDocumentCollections() }
         }
 
-        void buildFullDocumentCollections() {
+        void completeDocumentCollections() {
             for (epcDescription in analyzedEPC) {
                 for (documentCollection in epcDescription.documentCollections) {
-                    fullDocumentCollections.add(documentCollection)
+                    completedDocumentCollections.add(documentCollection)
                 }
             }
 
-            fullDocumentCollections = fullDocumentCollections
+            completedDocumentCollections = completedDocumentCollections
                     .unique(Comparator.comparing { DocumentCollectionInfo dCO -> dCO.collection.document.object.getObjectDefinitionId() })
 
-            List<DocumentCollectionInfo> foundedDocumentCollections = fullDocumentCollections
+            List<DocumentCollectionInfo> foundedDocumentCollections = completedDocumentCollections
             while (foundedDocumentCollections) {
                 List<DocumentCollectionInfo> unparsedDocumentCollections = foundedDocumentCollections
                 unparsedDocumentCollections.each { DocumentCollectionInfo dCO -> dCO.findContainedDocuments() }
                 foundedDocumentCollections = parseDocumentCollections(unparsedDocumentCollections)
-                fullDocumentCollections.addAll(foundedDocumentCollections)
+                completedDocumentCollections.addAll(foundedDocumentCollections)
             }
         }
 
         private List<DocumentCollectionInfo> parseDocumentCollections(List<DocumentCollectionInfo> unparsedDocumentCollections) {
-            List<String> fullDocumentCollectionsObjectDefinitionIds = fullDocumentCollections.collect { DocumentCollectionInfo dCO -> dCO.collection.document.object.getObjectDefinitionId() }
+            List<String> completedDocumentCollectionObjectDefinitionIds = completedDocumentCollections.collect { DocumentCollectionInfo dCO -> dCO.collection.document.object.getObjectDefinitionId() }
             List<DocumentCollectionInfo> foundedDocumentCollections = []
             for (unparsedDocumentCollection in unparsedDocumentCollections) {
                 for (containedDocument in unparsedDocumentCollection.containedDocuments) {
                     Model containedDocumentModel = EPCDescription.findDocumentCollectionModel(containedDocument.document.object)
-                    boolean containedDocumentAlreadyInFullCollections = containedDocument.document.object.getObjectDefinitionId() in fullDocumentCollectionsObjectDefinitionIds
+                    boolean containedDocumentAlreadyInCompletedCollections = containedDocument.document.object.getObjectDefinitionId() in completedDocumentCollectionObjectDefinitionIds
 
-                    if (containedDocumentModel && !containedDocumentAlreadyInFullCollections) {
+                    if (containedDocumentModel && !containedDocumentAlreadyInCompletedCollections) {
                         foundedDocumentCollections.add(new DocumentCollectionInfo(containedDocument, containedDocumentModel))
                     }
                 }
@@ -984,20 +993,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         subprocessDescription.defineGoals()
         subprocessDescription.findExternalProcessInputFlows()
         subprocessDescription.findExternalProcessOutputFlows()
-        subprocessDescription.buildExternalProcessesWithInputFlows()
-        subprocessDescription.buildExternalProcessesWithOutputFlows()
+        subprocessDescription.completeExternalProcessesWithInputFlows()
+        subprocessDescription.completeExternalProcessesWithOutputFlows()
         subprocessDescription.defineProcessSelectionModel()
         subprocessDescription.defineScenarios()
 
         if (detailLevel == 4) {
             subprocessDescription.defineProcedures()
             subprocessDescription.defineBusinessRoles()
-            subprocessDescription.buildFullBusinessRoles()
+            subprocessDescription.completeBusinessRoles()
         }
 
         subprocessDescription.identifyAnalyzedEPC()
         subprocessDescription.defineNormativeDocuments()
+        subprocessDescription.completeNormativeDocuments()
         subprocessDescription.defineDocumentCollections()
-        subprocessDescription.buildFullDocumentCollections()
+        subprocessDescription.completeDocumentCollections()
     }
 }
