@@ -852,7 +852,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private static String trimStringValue(String value) {
-        String resultString = value.replaceAll("\\u00A0", " ").trim()
+        String resultString = value.replaceAll("\\u00A0", " ")
         resultString = resultString.replaceAll("[\\s\\n]+", " ").trim()
         return resultString
     }
@@ -964,26 +964,29 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
         List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it, detailLevel)}
-        subProcessDescriptions.each {it.defineParentProcess()}
-        subProcessDescriptions.each {it.findOwners()}
-        subProcessDescriptions.each {it.defineGoals()}
-        subProcessDescriptions.each {it.findExternalProcessInputFlows()}
-        subProcessDescriptions.each {it.findExternalProcessOutputFlows()}
-        subProcessDescriptions.each {it.buildExternalProcessesWithInputFlows()}
-        subProcessDescriptions.each {it.buildExternalProcessesWithOutputFlows()}
-        subProcessDescriptions.each {it.defineProcessSelectionModel()}
-        subProcessDescriptions.each {it.defineScenarios()}
+        subProcessDescriptions.each {buildSubProcessDescription(it)}
+        return subProcessDescriptions
+    }
+
+    private void buildSubProcessDescription(SubprocessDescription subprocessDescription) {
+        subprocessDescription.defineParentProcess()
+        subprocessDescription.findOwners()
+        subprocessDescription.defineGoals()
+        subprocessDescription.findExternalProcessInputFlows()
+        subprocessDescription.findExternalProcessOutputFlows()
+        subprocessDescription.buildExternalProcessesWithInputFlows()
+        subprocessDescription.buildExternalProcessesWithOutputFlows()
+        subprocessDescription.defineProcessSelectionModel()
+        subprocessDescription.defineScenarios()
 
         if (detailLevel == 4) {
-            subProcessDescriptions.each { it.defineProcedures() }
-            subProcessDescriptions.each { it.defineBusinessRoles() }
+            subprocessDescription.defineProcedures()
+            subprocessDescription.defineBusinessRoles()
         }
 
-        subProcessDescriptions.each {it.identifyAnalyzedEPC()}
-        subProcessDescriptions.each {it.defineNormativeDocuments()}
-        subProcessDescriptions.each {it.defineDocumentCollections()}
-        subProcessDescriptions.each {it.buildFullDocumentCollections()}
-
-        return subProcessDescriptions
+        subprocessDescription.identifyAnalyzedEPC()
+        subprocessDescription.defineNormativeDocuments()
+        subprocessDescription.defineDocumentCollections()
+        subprocessDescription.buildFullDocumentCollections()
     }
 }
