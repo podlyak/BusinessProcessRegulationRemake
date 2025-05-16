@@ -336,6 +336,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private class SubprocessDescription {
         CommonFunctionInfo subprocess
+        int detailLevel
+
         CommonFunctionInfo parentProcess = null
         List<SubprocessOwnerDescription> owners = []
         List<CommonObjectInfo> goals = []
@@ -344,8 +346,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         Model processSelectionModel = null
         List<ScenarioDescription> scenarios = []
 
-        SubprocessDescription(ObjectElement subprocess) {
+        List<EPCDescription> analyzedEPC = []
+        List<DocumentCollectionInfo> fullDocumentCollections = []
+
+        SubprocessDescription(ObjectElement subprocess, int detailLevel) {
             this.subprocess = new CommonFunctionInfo(subprocess)
+            this.detailLevel = detailLevel
         }
 
         private void defineParentProcess() {
@@ -561,6 +567,65 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void defineBusinessRoles() {
             scenarios.each {it.defineBusinessRoles()}
         }
+
+        private void identifyAnalyzedEPC() {
+            if (detailLevel == 3) {
+                for (scenario in scenarios) {
+                    analyzedEPC.add(scenario.scenario)
+                }
+            }
+
+            if (detailLevel == 4) {
+                for (scenario in scenarios) {
+                    for (procedure in scenario.procedures) {
+                        analyzedEPC.add(procedure.procedure)
+                    }
+                }
+            }
+        }
+
+        private void defineNormativeDocuments() {
+            analyzedEPC.each {it.findNormativeDocuments()}
+        }
+
+        private void defineDocumentCollections() {
+            analyzedEPC.each {it.findDocumentCollections()}
+        }
+
+        private void buildFullDocumentCollections() {
+            for (epcDescription in analyzedEPC) {
+                for (documentCollection in epcDescription.documentCollections) {
+                    fullDocumentCollections.add(documentCollection)
+                }
+            }
+
+            fullDocumentCollections = fullDocumentCollections
+                    .unique(Comparator.comparing { DocumentCollectionInfo o -> o.collection.document.object.getObjectDefinitionId() })
+
+            List<DocumentCollectionInfo> foundedDocumentCollections = fullDocumentCollections
+            while (foundedDocumentCollections) {
+                List<DocumentCollectionInfo> unparsedDocumentCollections = foundedDocumentCollections
+                unparsedDocumentCollections.each {it.findContainedDocuments()}
+                foundedDocumentCollections = parseDocumentCollections(unparsedDocumentCollections)
+                fullDocumentCollections.addAll(foundedDocumentCollections)
+            }
+        }
+
+        private List<DocumentCollectionInfo> parseDocumentCollections(List<DocumentCollectionInfo> unparsedDocumentCollections) {
+            List<String> fullDocumentCollectionsObjectDefinitionIds = fullDocumentCollections.collect { it.collection.document.object.getObjectDefinitionId()}
+            List<DocumentCollectionInfo> foundedDocumentCollections = []
+            for (unparsedDocumentCollection in unparsedDocumentCollections) {
+                for (containedDocument in unparsedDocumentCollection.containedDocuments) {
+                    Model containedDocumentModel = EPCDescription.findDocumentCollectionModel(containedDocument.document.object)
+                    boolean containedDocumentAlreadyInFullCollections = containedDocument.document.object.getObjectDefinitionId() in fullDocumentCollectionsObjectDefinitionIds
+
+                    if (containedDocumentModel && !containedDocumentAlreadyInFullCollections) {
+                        foundedDocumentCollections.add(new DocumentCollectionInfo(containedDocument, containedDocumentModel))
+                    }
+                }
+            }
+            return foundedDocumentCollections
+        }
     }
 
     private class ScenarioDescription {
@@ -651,19 +716,23 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .sort { o1, o2 -> ModelUtils.getElementsCoordinatesComparator().compare(o1, o2) }
 
             documentCollectionObjects.each {ObjectElement documentCollectionObject ->
-                List <Model> documentCollectionObjectModels = documentCollectionObject.getDecompositions()
-                        .findAll {it.isModel()} as List <Model>
-                Model documentCollectionModel = documentCollectionObjectModels
-                        .findAll {it.getModelTypeId() in DOCUMENT_COLLECTION_MODEL_TYPE_IDS}
-                        .stream()
-                        .findFirst()
-                        .orElse(null)
+                Model documentCollectionModel = findDocumentCollectionModel(documentCollectionObject)
 
                 // TODO: обсудить логику определения набора документов (пример ошибки с типом символа)
                 if (documentCollectionModel) {
                     documentCollections.add(new DocumentCollectionInfo(documentCollectionObject, documentCollectionModel))
                 }
             }
+        }
+
+        static Model findDocumentCollectionModel(ObjectElement documentCollectionObject) {
+            List <Model> documentCollectionObjectModels = documentCollectionObject.getDecompositions()
+                    .findAll {it.isModel()} as List <Model>
+            return documentCollectionObjectModels
+                    .findAll {it.getModelTypeId() in DOCUMENT_COLLECTION_MODEL_TYPE_IDS}
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
         }
     }
 
@@ -885,7 +954,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
-        List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it)}
+        List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{new SubprocessDescription(it, detailLevel)}
         subProcessDescriptions.each {it.defineParentProcess()}
         subProcessDescriptions.each {it.findOwners()}
         subProcessDescriptions.each {it.defineGoals()}
@@ -910,16 +979,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             subProcessDescriptions.each { it.defineBusinessRoles() }
         }
 
-        for (subProcessDescription in subProcessDescriptions) {
-            for (scenarioDescription in subProcessDescription.scenarios) {
-                scenarioDescription.scenario.findNormativeDocuments()
-                scenarioDescription.scenario.findDocumentCollections()
-
-                for (documentCollection in scenarioDescription.scenario.documentCollections) {
-                    documentCollection.findContainedDocuments()
-                }
-            }
-        }
+        subProcessDescriptions.each {it.identifyAnalyzedEPC()}
+        subProcessDescriptions.each {it.defineNormativeDocuments()}
+        subProcessDescriptions.each {it.defineDocumentCollections()}
+        subProcessDescriptions.each {it.buildFullDocumentCollections()}
 
         return subProcessDescriptions
     }
