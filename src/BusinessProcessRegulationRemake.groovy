@@ -588,6 +588,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId() })
         }
 
+        void buildResponsibilityScenariosMatrix() {
+            scenarios.each { ScenarioDescription scenarioDescription -> scenarioDescription.buildResponsibilityMatrix() }
+        }
+
         void identifyAnalyzedEPC() {
             if (detailLevel == 3) {
                 for (scenario in scenarios) {
@@ -659,6 +663,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private class ScenarioDescription {
         EPCDescription scenario
         List<ProcedureDescription> procedures = []
+        Map<String, List<String>> responsibilityMatrix = new TreeMap<>()
 
         ScenarioDescription(Model model, ObjectElement functionObject) {
             this.scenario = new EPCDescription(model, functionObject)
@@ -695,6 +700,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 allBusinessRoles.addAll(procedureDescription.businessRoles)
             }
             return allBusinessRoles.unique(Comparator.comparing { BusinessRoleInfo bRI -> bRI.businessRole.object.getObjectDefinitionId() })
+        }
+
+        void buildResponsibilityMatrix() {
+            for (procedure in procedures) {
+                String procedureName = procedure.procedure.functionInfo.function.name
+                List<String> procedureBusinessRoleNames = procedure.businessRoles.collect {BusinessRoleInfo businessRole -> businessRole.businessRole.name}
+                responsibilityMatrix.put(procedureName, procedureBusinessRoleNames)
+            }
         }
     }
 
@@ -1002,6 +1015,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             subprocess.defineProcedures()
             subprocess.defineBusinessRoles()
             subprocess.completeBusinessRoles()
+            subprocess.buildResponsibilityScenariosMatrix()
         }
 
         subprocess.identifyAnalyzedEPC()
