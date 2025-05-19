@@ -871,8 +871,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private static String trimStringValue(String value) {
-        String resultString = value.replaceAll("\\u00A0", " ")
-        resultString = resultString.replaceAll("[\\s\\n]+", " ").trim()
+        String resultString = value.replaceAll('\\u00A0', ' ')
+        resultString = resultString.replaceAll('[\\s\\n]+', ' ').trim()
         return resultString
     }
 
@@ -907,7 +907,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         String deep = ParamUtils.parse(context.findParameter(DETAIL_LEVEL_PARAM_NAME)) as String
-        detailLevel = Integer.parseInt(deep.replaceAll("[^0-9]+", ""))
+        detailLevel = Integer.parseInt(deep.replaceAll('[^0-9]+', ''))
 
         docVersion = ParamUtils.parse(context.findParameter(DOC_VERSION_PARAM_NAME)) as String
 
@@ -976,7 +976,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             subProcessObjects.sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
         }
         if (subProcessObjects.isEmpty()) {
-            throw new SilaScriptException("Скрипт должен запускаться на экземплярах объектов")
+            throw new SilaScriptException('Скрипт должен запускаться на экземплярах объектов')
         }
         return subProcessObjects
     }
@@ -987,27 +987,27 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         return subProcessDescriptions
     }
 
-    private void buildSubProcessDescription(SubprocessDescription subprocessDescription) {
-        subprocessDescription.defineParentProcess()
-        subprocessDescription.findOwners()
-        subprocessDescription.defineGoals()
-        subprocessDescription.findExternalProcessInputFlows()
-        subprocessDescription.findExternalProcessOutputFlows()
-        subprocessDescription.completeExternalProcessesWithInputFlows()
-        subprocessDescription.completeExternalProcessesWithOutputFlows()
-        subprocessDescription.defineProcessSelectionModel()
-        subprocessDescription.defineScenarios()
+    private void buildSubProcessDescription(SubprocessDescription subprocess) {
+        subprocess.defineParentProcess()
+        subprocess.findOwners()
+        subprocess.defineGoals()
+        subprocess.findExternalProcessInputFlows()
+        subprocess.findExternalProcessOutputFlows()
+        subprocess.completeExternalProcessesWithInputFlows()
+        subprocess.completeExternalProcessesWithOutputFlows()
+        subprocess.defineProcessSelectionModel()
+        subprocess.defineScenarios()
 
         if (detailLevel == 4) {
-            subprocessDescription.defineProcedures()
-            subprocessDescription.defineBusinessRoles()
-            subprocessDescription.completeBusinessRoles()
+            subprocess.defineProcedures()
+            subprocess.defineBusinessRoles()
+            subprocess.completeBusinessRoles()
         }
 
-        subprocessDescription.identifyAnalyzedEPC()
-        subprocessDescription.defineNormativeDocuments()
-        subprocessDescription.completeNormativeDocuments()
-        subprocessDescription.defineDocumentCollections()
-        subprocessDescription.completeDocumentCollections()
+        subprocess.identifyAnalyzedEPC()
+        subprocess.defineNormativeDocuments()
+        subprocess.completeNormativeDocuments()
+        subprocess.defineDocumentCollections()
+        subprocess.completeDocumentCollections()
     }
 }
