@@ -101,6 +101,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             INFORMATION_CARRIER_MODEL_TYPE_ID,
     ]
 
+    private static final String APPLICATION_SYSTEM_TYPE_OBJECT_TYPE_ID = 'OT_APPL_SYS_TYPE'
     private static final String BUSINESS_ROLE_OBJECT_TYPE_ID = 'OT_PERS_TYPE'
     private static final String CLUSTER_DATA_MODEL_OBJECT_TYPE_ID = 'OT_CLST'
     private static final String EVENT_OBJECT_TYPE_ID = 'OT_EVT'
@@ -152,6 +153,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     ]
     private static final String EVENT_W_EPC_FUNCTION_EDGE_TYPE_ID = 'CT_ACTIV_1'
     private static final String EVENT_W_OPERATOR_EDGE_TYPE_ID = 'CT_IS_EVAL_BY_1'
+    private static final List<String> INFORMATION_SYSTEM_W_EPC_FUNCTION_EDGE_TYPE_IDS = [
+            'CT_CAN_SUPP_1',
+            'CT_SUPP_1',
+            'CT_SUPP_2',
+            'CT_SUPP_3',
+    ]
     private static final String INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
     private static final String OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID = 'CT_ACTIV_1'
@@ -926,6 +933,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             epcFunction.findPerformers()
+            epcFunction.findInformationSystems()
         }
     }
 
@@ -938,6 +946,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<DocumentInfo> outputDocuments = []
         List<CommonObjectInfo> outputEvents = []
         List<PerformerInfo> performers = []
+        List<CommonObjectInfo> informationSystems = []
 
         EPCFunctionDescription(ObjectElement function) {
             this.function = new CommonFunctionInfo(function)
@@ -1070,6 +1079,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     performers.add(new PerformerInfo(objectElement, edge))
                 }
             }
+        }
+
+        void findInformationSystems() {
+            List<ObjectElement> informationSystemObjects = function.function.object.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in INFORMATION_SYSTEM_W_EPC_FUNCTION_EDGE_TYPE_IDS }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == APPLICATION_SYSTEM_TYPE_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+            informationSystems = informationSystemObjects.collect { ObjectElement informationSystemObject -> new CommonObjectInfo(informationSystemObject) }
         }
     }
 
