@@ -117,7 +117,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             INFORMATION_CARRIER_OBJECT_TYPE_ID,
     ]
 
-    private static final List<String> ABBREVIATIONS_EDGE_TYPE_IDS = [
+    private static final List<String> ABBREVIATION_EDGE_TYPE_IDS = [
             'CT_HAS_REL_WITH',
             'CT_IS_IN_RELSHP_TO',
             'CT_IS_IN_RELSHP_TO_1',
@@ -169,6 +169,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final List<String> OWNER_W_SUBPROCESS_EDGE_TYPE_IDS = [
             'CT_EXEC_1',
             'CT_EXEC_2',
+    ]
+    private static final List<String> PERFORMER_W_EPC_FUNCTION_EDGE_TYPE_IDS = [
+            'CT_AGREES',
+            'CT_CONTR_TO_1',
+            'CT_CONTR_TO_2',
+            'CT_DECD_ON',
+            'CT_EXEC_1',
+            'CT_EXEC_2',
+            'CT_MUST_BE_INFO_ABT_1',
     ]
     private static final String POSITION_W_BUSINESS_ROLE_EDGE_TYPE_ID = 'CT_EXEC_5'
     private static final String SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
@@ -337,6 +346,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .find { Edge e -> e.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID }
                     .getSource() as ObjectElement
             this.leadershipPosition = getName(leadershipPositionObject.getObjectDefinition())
+        }
+    }
+
+    private class PerformerInfo {
+        CommonObjectInfo performer
+        String action
+
+        PerformerInfo(ObjectElement performer, Edge edge) {
+            this.performer = new CommonObjectInfo(performer)
+            this.action = edge.getEdgeType().name
         }
     }
 
@@ -904,6 +923,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             if (!epcFunction.outputDocuments) {
                 epcFunction.findOutputEvents()
             }
+
+            epcFunction.findPerformers()
         }
     }
 
@@ -914,6 +935,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<CommonObjectInfo> inputEvents = []
         List<DocumentInfo> outputDocuments = []
         List<CommonObjectInfo> outputEvents = []
+        List<PerformerInfo> performers = []
 
         EPCFunctionDescription(ObjectElement function) {
             this.function = new CommonFunctionInfo(function)
@@ -1033,6 +1055,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
             return operators
+        }
+
+        void findPerformers() {
+            List<Edge> performerEdges = function.function.object.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in PERFORMER_W_EPC_FUNCTION_EDGE_TYPE_IDS }
+
+            for (edge in performerEdges) {
+                ObjectElement objectElement = edge.getSource() as ObjectElement
+                if (objectElement.getObjectDefinition().getObjectTypeId() in [BUSINESS_ROLE_OBJECT_TYPE_ID, GROUP_OBJECT_TYPE_ID, ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID]) {
+                    performers.add(new PerformerInfo(objectElement, edge))
+                }
+            }
         }
     }
 
@@ -1159,13 +1193,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         List<ObjectElement> abbreviationObjects = abbreviationsRootObject.getExitEdges()
-                .findAll { Edge e -> e.getEdgeTypeId() in ABBREVIATIONS_EDGE_TYPE_IDS }
+                .findAll { Edge e -> e.getEdgeTypeId() in ABBREVIATION_EDGE_TYPE_IDS }
                 .collect { Edge e -> e.getTarget() as ObjectElement }
                 .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
 
         abbreviationObjects.addAll(
                 abbreviationsRootObject.getEnterEdges()
-                        .findAll { Edge e -> e.getEdgeTypeId() in ABBREVIATIONS_EDGE_TYPE_IDS }
+                        .findAll { Edge e -> e.getEdgeTypeId() in ABBREVIATION_EDGE_TYPE_IDS }
                         .collect { Edge e -> e.getSource() as ObjectElement }
                         .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
         )
