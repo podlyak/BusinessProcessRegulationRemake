@@ -298,6 +298,48 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
+    private class SubprocessOwnerInfo {
+        CommonObjectInfo owner
+        SubprocessOwnerType type
+        String leadershipPosition = null
+
+        SubprocessOwnerInfo(ObjectElement owner, SubprocessOwnerType ownerType) {
+            this.owner = new CommonObjectInfo(owner)
+            this.type = ownerType
+
+            if (type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
+                defineLeadershipPosition()
+            }
+        }
+
+        private void defineLeadershipPosition() {
+            ObjectDefinition ownerObjectDefinition = owner.object.getObjectDefinition()
+            Model ownerModel = ownerObjectDefinition
+                    .getDecompositions(ORGANIZATION_STRUCTURE_MODEL_TYPE_ID)
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
+
+            if (ownerModel == null) {
+                return
+            }
+
+            ObjectElement ownerModelObject = ownerModel.findObjectInstances(ownerObjectDefinition)
+                    .stream()
+                    .findFirst()
+                    .orElse(null)
+
+            if (ownerModelObject == null) {
+                return
+            }
+
+            ObjectElement leadershipPositionObject = ownerModelObject.getEnterEdges()
+                    .find { Edge e -> e.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID }
+                    .getSource() as ObjectElement
+            this.leadershipPosition = getName(leadershipPositionObject.getObjectDefinition())
+        }
+    }
+
     private class DocumentInfo {
         CommonObjectInfo document
         String type
@@ -402,7 +444,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         int detailLevel
 
         CommonFunctionInfo parentProcess = null
-        List<SubprocessOwnerDescription> owners = []
+        List<SubprocessOwnerInfo> owners = []
         List<CommonObjectInfo> goals = []
         List<InputFlowDescription> externalProcessInputFlowDescriptions = []
         List<OutputFlowDescription> externalProcessOutputFlowDescriptions = []
@@ -459,7 +501,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
             owners = ownerObjects.collect { ObjectElement ownerObject ->
-                new SubprocessOwnerDescription(ownerObject, subprocessOwnerTypeMap.get(ownerObject.getObjectDefinition().getObjectTypeId()))
+                new SubprocessOwnerInfo(ownerObject, subprocessOwnerTypeMap.get(ownerObject.getObjectDefinition().getObjectTypeId()))
             }
         }
 
@@ -866,7 +908,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private class EPCFunctionDescription {
-        CommonObjectInfo function
+        CommonFunctionInfo function
 
         List<DocumentInfo> inputDocuments = []
         List<CommonObjectInfo> inputEvents = []
@@ -874,11 +916,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<CommonObjectInfo> outputEvents = []
 
         EPCFunctionDescription(ObjectElement function) {
-            this.function = new CommonObjectInfo(function)
+            this.function = new CommonFunctionInfo(function)
         }
 
         void findInputDocuments() {
-            List<ObjectElement> documentObjects = function.object.getEnterEdges()
+            List<ObjectElement> documentObjects = function.function.object.getEnterEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() in DOCUMENT_W_EPC_FUNCTION_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getSource() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
@@ -888,13 +930,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         void findInputEvents() {
-            List<ObjectElement> eventObjects = function.object.getEnterEdges()
+            List<ObjectElement> eventObjects = function.function.object.getEnterEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_EPC_FUNCTION_EDGE_TYPE_ID }
                     .collect { Edge e -> e.getSource() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
 
-            List<ObjectElement> operators = function.object.getEnterEdges()
+            List<ObjectElement> operators = function.function.object.getEnterEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() == OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID }
                     .collect { Edge e -> e.getSource() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
@@ -936,7 +978,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         void findOutputDocuments() {
-            List<ObjectElement> documentObjects = function.object.getExitEdges()
+            List<ObjectElement> documentObjects = function.function.object.getExitEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_DOCUMENT_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getTarget() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
@@ -946,13 +988,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         void findOutputEvents() {
-            List<ObjectElement> eventObjects = function.object.getExitEdges()
+            List<ObjectElement> eventObjects = function.function.object.getExitEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_EVENT_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getTarget() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
 
-            List<ObjectElement> operators = function.object.getExitEdges()
+            List<ObjectElement> operators = function.function.object.getExitEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_OPERATOR_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getTarget() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
@@ -991,48 +1033,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
             return operators
-        }
-    }
-
-    private class SubprocessOwnerDescription {
-        CommonObjectInfo subprocessOwner
-        SubprocessOwnerType type
-        String leadershipPosition = null
-
-        SubprocessOwnerDescription(ObjectElement subprocessOwner, SubprocessOwnerType subprocessOwnerType) {
-            this.subprocessOwner = new CommonObjectInfo(subprocessOwner)
-            this.type = subprocessOwnerType
-
-            if (type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
-                defineLeadershipPosition()
-            }
-        }
-
-        private void defineLeadershipPosition() {
-            ObjectDefinition subprocessOwnerObjectDefinition = subprocessOwner.object.getObjectDefinition()
-            Model subprocessOwnerModel = subprocessOwnerObjectDefinition
-                    .getDecompositions(ORGANIZATION_STRUCTURE_MODEL_TYPE_ID)
-                    .stream()
-                    .findFirst()
-                    .orElse(null)
-
-            if (subprocessOwnerModel == null) {
-                return
-            }
-
-            ObjectElement subprocessOwnerModelObject = subprocessOwnerModel.findObjectInstances(subprocessOwnerObjectDefinition)
-                    .stream()
-                    .findFirst()
-                    .orElse(null)
-
-            if (subprocessOwnerModelObject == null) {
-                return
-            }
-
-            ObjectElement leadershipPositionObject = subprocessOwnerModelObject.getEnterEdges()
-                    .find { Edge e -> e.getEdgeTypeId() == LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID }
-                    .getSource() as ObjectElement
-            this.leadershipPosition = getName(leadershipPositionObject.getObjectDefinition())
         }
     }
 
