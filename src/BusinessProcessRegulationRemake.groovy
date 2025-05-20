@@ -183,6 +183,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SUBPROCESS_W_OUTPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
     private static final String SUPPLIER_W_INPUT_FLOW_EDGE_TYPE_ID = 'CT_HAS_OUT'
 
+    private static final String AVERAGE_EXECUTION_TIME_ATTR_ID = 'AT_TIME_AVG_PRCS'
     private static final String DATA_ELEMENT_CODE_ATTR_ID = '46e148b0-b96d-11e3-05b7-db7cafd96ef7'
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
@@ -930,6 +931,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private class EPCFunctionDescription {
         CommonFunctionInfo function
+        String duration
 
         List<DocumentInfo> inputDocuments = []
         List<CommonObjectInfo> inputEvents = []
@@ -939,6 +941,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         EPCFunctionDescription(ObjectElement function) {
             this.function = new CommonFunctionInfo(function)
+            this.duration = getAttributeValue(function.getObjectDefinition(), AVERAGE_EXECUTION_TIME_ATTR_ID)
         }
 
         void findInputDocuments() {
