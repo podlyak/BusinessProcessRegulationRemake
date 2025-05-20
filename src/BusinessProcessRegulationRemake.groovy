@@ -103,22 +103,24 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private static final String BUSINESS_ROLE_OBJECT_TYPE_ID = 'OT_PERS_TYPE'
     private static final String CLUSTER_DATA_MODEL_OBJECT_TYPE_ID = 'OT_CLST'
+    private static final String EVENT_OBJECT_TYPE_ID = 'OT_EVT'
     private static final String FLOW_OBJECT_TYPE_ID = 'OT_TECH_TRM'
     private static final String FUNCTION_OBJECT_TYPE_ID = 'OT_FUNC'
     private static final String GOAL_OBJECT_TYPE_ID = 'OT_OBJECTIVE'
     private static final String GROUP_OBJECT_TYPE_ID = 'OT_GRP'
     private static final String INFORMATION_CARRIER_OBJECT_TYPE_ID = 'OT_INFO_CARR'
     private static final String ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID = 'OT_ORG_UNIT'
+    private static final String RULE_OBJECT_TYPE_ID = 'OT_RULE'
 
-    private static final List<String> DOCUMENT_COLLECTION_OBJECT_TYPE_IDS = [
+    private static final List<String> DOCUMENT_OBJECT_TYPE_IDS = [
             CLUSTER_DATA_MODEL_OBJECT_TYPE_ID,
             INFORMATION_CARRIER_OBJECT_TYPE_ID,
     ]
 
     private static final List<String> ABBREVIATIONS_EDGE_TYPE_IDS = [
+            'CT_HAS_REL_WITH',
             'CT_IS_IN_RELSHP_TO',
             'CT_IS_IN_RELSHP_TO_1',
-            'CT_HAS_REL_WITH',
             'CT_REFS_TO_2',
     ]
     private static final List<String> CLUSTER_GROUP_W_CLUSTER_DATA_MODEL_EDGE_TYPE_IDS = [
@@ -131,8 +133,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             'CT_SUBS_3',
             'CT_SUBS_5',
     ]
+    private static final List<String> DOCUMENT_W_EPC_FUNCTION_EDGE_TYPE_IDS = [
+            'CT_PROV_INP_FOR',
+            'CT_IS_INP_FOR',
+    ]
+    private static final String DOCUMENT_W_STATUS_EDGE_TYPE_ID = 'CT_HAS_STATE'
+    private static final String EVENT_W_EPC_FUNCTION_EDGE_TYPE_ID = 'CT_ACTIV_1'
+    private static final String EVENT_W_OPERATOR_EDGE_TYPE_ID = 'CT_IS_EVAL_BY_1'
     private static final String INPUT_FLOW_W_SUBPROCESS_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final String LEADERSHIP_POSITION_W_OWNER_EDGE_TYPE_ID = 'CT_IS_DISC_SUPER'
+    private static final String OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID = 'CT_ACTIV_1'
+    private static final List<String> OPERATOR_W_OPERATOR_EDGE_TYPE_IDS = [
+            'CT_BPEL_LINKS',
+            'CT_LNK_1',
+            'CT_LNK_2',
+    ]
     private static final String ORGANIZATIONAL_UNIT_W_POSITION_EDGE_TYPE_ID = 'CT_IS_CRT_BY'
     private static final String OUTPUT_FLOW_W_CUSTOMER_EDGE_TYPE_ID = 'CT_IS_INP_FOR'
     private static final List<String> OWNER_W_SUBPROCESS_EDGE_TYPE_IDS = [
@@ -147,11 +162,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
 
+    // TODO: определиться со списком исключаемых символов (интерфейсы, группировка интерфейсов и т.д.)
+    private static final  List<String> EXCLUDED_EPC_FUNCTION_SYMBOL_IDS = [
+            '',
+    ]
     // TODO: переименовать??? и уточнить по просто внешнему, а не смежному
     private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
     private static final String NORMATIVE_DOCUMENT_SYMBOL_ID = '7096d320-cf42-11e2-69e4-ac8112d1b401'
     // TODO: уточнить по другим типам символа сценария
     private static final String SCENARIO_SYMBOL_ID = 'ST_SCENARIO'
+    private static final String STATUS_SYMBOL_ID = 'd6e8a7b0-7ce6-11e2-3463-e4115bf4fdb9'
 
     private static Map<String, String> fullAbbreviations = new TreeMap<>()
     private static Pattern abbreviationsPattern = null
@@ -265,10 +285,26 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private class DocumentInfo {
         CommonObjectInfo document
         String type
+        // TODO: уточнить, может ли быть несколько?
+        List<CommonObjectInfo> statuses = []
 
         DocumentInfo(ObjectElement document) {
             this.document = new CommonObjectInfo(document)
             this.type = document.getSymbol().name
+            findStatuses()
+        }
+
+        private void findStatuses() {
+            List<ObjectElement> statusObjects = document.object.getExitEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == DOCUMENT_W_STATUS_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getTarget() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getSymbolId() == STATUS_SYMBOL_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+
+            if (statusObjects) {
+                statuses = statusObjects.collect { ObjectElement statusObject -> new CommonObjectInfo(statusObject) }
+            }
         }
     }
 
@@ -658,6 +694,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
             return foundedDocumentCollections
         }
+
+        void analyzeEPCModels() {
+            analyzedEPC.each { EPCDescription epc -> analyzeEPCModel(epc) }
+        }
+
+        private analyzeEPCModel(EPCDescription epc) {
+            epc.findFunctions()
+            epc.analyzeFunctions()
+        }
     }
 
     private class ScenarioDescription {
@@ -732,6 +777,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         Model model
         List<NormativeDocumentInfo> normativeDocuments = []
         List<DocumentCollectionInfo> documentCollections = []
+        List<EPCFunctionDescription> epcFunctions = []
 
         EPCDescription(Model model, ObjectElement functionObject) {
             this.functionInfo = new CommonFunctionInfo(functionObject)
@@ -751,17 +797,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         void findDocumentCollections () {
-            List<ObjectElement> documentCollectionObjects = model.getObjects()
-                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_COLLECTION_OBJECT_TYPE_IDS }
+            List<ObjectElement> documentObjects = model.getObjects()
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
 
-            documentCollectionObjects.each { ObjectElement documentCollectionObject ->
-                Model documentCollectionModel = findDocumentCollectionModel(documentCollectionObject)
+            documentObjects.each { ObjectElement documentObject ->
+                Model documentCollectionModel = findDocumentCollectionModel(documentObject)
 
                 // TODO: обсудить логику определения набора документов (пример ошибки с типом символа)
                 if (documentCollectionModel) {
-                    documentCollections.add(new DocumentCollectionInfo(documentCollectionObject, documentCollectionModel))
+                    documentCollections.add(new DocumentCollectionInfo(documentObject, documentCollectionModel))
                 }
             }
         }
@@ -774,6 +820,95 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .stream()
                     .findFirst()
                     .orElse(null)
+        }
+
+        void findFunctions() {
+            List<ObjectElement> epcFunctionObjects = model.findObjectsByType(FUNCTION_OBJECT_TYPE_ID)
+                    .findAll { ObjectElement epcFunctionObject -> !(epcFunctionObject.getSymbolId() in EXCLUDED_EPC_FUNCTION_SYMBOL_IDS) }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+            epcFunctions = epcFunctionObjects.collect { ObjectElement epcFunctionObject -> new EPCFunctionDescription(epcFunctionObject) }
+        }
+
+        void analyzeFunctions() {
+            epcFunctions.each { EPCFunctionDescription epcFunction -> analyzeFunction(epcFunction) }
+        }
+
+        private void analyzeFunction(EPCFunctionDescription epcFunction) {
+            epcFunction.findInputDocuments()
+
+            if (!epcFunction.inputDocuments) {
+                epcFunction.findInputEvents()
+            }
+        }
+    }
+
+    private class EPCFunctionDescription {
+        CommonObjectInfo function
+
+        List<DocumentInfo> inputDocuments = []
+        List<CommonObjectInfo> inputEvents = []
+
+        EPCFunctionDescription(ObjectElement function) {
+            this.function = new CommonObjectInfo(function)
+        }
+
+        void findInputDocuments() {
+            List<ObjectElement> documentObjects = function.object.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in DOCUMENT_W_EPC_FUNCTION_EDGE_TYPE_IDS }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+            inputDocuments = documentObjects.collect { ObjectElement documentObject -> new DocumentInfo(documentObject) }
+        }
+
+        void findInputEvents() {
+            List<ObjectElement> eventObjects = function.object.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_EPC_FUNCTION_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+
+            List<ObjectElement> operators = function.object.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+
+            // TODO: обсудить логику с операторами, что доходим до события и останавливаемся, а не ищем еще оператор выше события
+            while (operators) {
+                List<ObjectElement> unparsedOperators = operators
+                operators = []
+
+                unparsedOperators.each { ObjectElement unparsedOperator ->
+                    eventObjects.addAll(findInputEventsViaOperator(unparsedOperator))
+                    operators.addAll(findOperatorsViaOperator(unparsedOperator))
+                }
+            }
+
+            eventObjects = eventObjects
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+            inputEvents = eventObjects.collect { ObjectElement eventObject -> new CommonObjectInfo(eventObject) }
+        }
+
+        private List<ObjectElement> findInputEventsViaOperator(ObjectElement operator) {
+            List<ObjectElement> eventObjects = operator.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_OPERATOR_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+            return eventObjects
+        }
+
+        private List<ObjectElement> findOperatorsViaOperator(ObjectElement operator) {
+            List<ObjectElement> operators = operator.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in OPERATOR_W_OPERATOR_EDGE_TYPE_IDS }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+            return operators
         }
     }
 
@@ -1023,5 +1158,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         subprocess.completeNormativeDocuments()
         subprocess.defineDocumentCollections()
         subprocess.completeDocumentCollections()
+        subprocess.analyzeEPCModels()
     }
 }
