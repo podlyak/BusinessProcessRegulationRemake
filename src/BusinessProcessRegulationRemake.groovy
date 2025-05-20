@@ -197,7 +197,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     // TODO: [critical] определиться со списком исключаемых символов (интерфейсы, группировка интерфейсов и т.д.)
     private static final  List<String> EXCLUDED_EPC_FUNCTION_SYMBOL_IDS = [
-            '',
+            '07b15070-9b4e-4919-8ed0-9bae8764c7fa', // TODO: удалить? (интерфейс, созданный через редактор и генератор)
+            '53a01270-95da-11ea-05b7-db7cafd96ef7', // TODO: удалить? (интерфейс СБП)
+            '75f2e570-bdd3-11e5-05b7-db7cafd96ef7',
+            'ST_PRCS_IF',
+            'fd841c20-cc37-11e6-05b7-db7cafd96ef7',
     ]
     // TODO: переименовать??? и уточнить по просто внешнему, а не смежному
     private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
