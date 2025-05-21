@@ -1,6 +1,8 @@
 import groovy.util.logging.Slf4j
 import ru.nextconsulting.bpm.dto.NodeId
+import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
+import ru.nextconsulting.bpm.repository.structure.FileNodeDTO
 import ru.nextconsulting.bpm.repository.structure.Node
 import ru.nextconsulting.bpm.repository.structure.ObjectDefinitionNode
 import ru.nextconsulting.bpm.repository.structure.ScriptParameter
@@ -16,15 +18,19 @@ import ru.nextconsulting.bpm.scriptengine.context.ContextParameters
 import ru.nextconsulting.bpm.scriptengine.context.CustomScriptContext
 import ru.nextconsulting.bpm.scriptengine.exception.SilaScriptException
 import ru.nextconsulting.bpm.scriptengine.script.GroovyScript
+import ru.nextconsulting.bpm.scriptengine.serverapi.FileApi
 import ru.nextconsulting.bpm.scriptengine.util.ParamUtils
 import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameter
 import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameters
 import ru.nextconsulting.bpm.utils.JsonConverter
 
 import java.sql.Timestamp
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.util.regex.Matcher
 import java.util.regex.Pattern
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @SuppressWarnings('unused')
 void execute() {
@@ -84,6 +90,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     static final String DETAIL_LEVEL_PARAM_NAME = 'Глубина детализации регламента'
     static final String DOC_VERSION_PARAM_NAME = 'Номер версии регламента'
     static final String DOC_DATE_PARAM_NAME = 'Дата утверждения регламента'
+
+    private static final String DOCX_RESULT_FILE_NAME_FIRST_PART = 'Регламент бизнес-процесса'
+    private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
+    private static final String DOCX_FORMAT = 'docx'
+    private static final String ZIP_FORMAT = 'zip'
+    private static final String FILE_REPOSITORY_ID = 'file-folder-root-id'
 
     private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
@@ -457,6 +469,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             containedDocuments = containedDocumentObjects.collect { ObjectElement containedDocumentObject -> new DocumentInfo(containedDocumentObject) }
+        }
+    }
+
+    private class FileInfo {
+        String fileName
+        FileNodeDTO content = null
+
+        FileInfo(String fileName, FileNodeDTO content) {
+            this.fileName = fileName
+            this.content = content
         }
     }
 
@@ -1255,8 +1277,46 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     void execute() {
         init()
 
-        List<ObjectElement> subProcessObjects = getSubProcessObjects()
-        List<SubprocessDescription> subProcessDescriptions = getSubProcessDescriptions(subProcessObjects)
+        List<ObjectElement> subprocessObjects = getSubprocessObjects()
+        List<SubprocessDescription> subprocessDescriptions = getSubProcessDescriptions(subprocessObjects)
+        List<FileInfo> files = createBPRegulations(subprocessDescriptions)
+
+        String resultFileName = null
+        FileNodeDTO result = null
+        String format = null
+
+        if (files.size() == 1) {
+            resultFileName = files[0].fileName
+            result = files[0].content
+            format = DOCX_FORMAT
+        }
+
+        if (files.size() > 1) {
+            resultFileName = ZIP_RESULT_FILE_NAME_FIRST_PART + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
+            format = ZIP_FORMAT
+
+            byte[] zipFileContent = createZipFileContent(files)
+            long userId = context.principalId()
+
+            FileNodeDTO fileNode = FileNodeDTO.builder()
+                    .nodeId(NodeId.builder().id(UUID.randomUUID().toString()).repositoryId(FILE_REPOSITORY_ID).build())
+                    .parentNodeId(NodeId.builder().id(String.valueOf(userId)).repositoryId(FILE_REPOSITORY_ID).build())
+                    .extension(format)
+                    .file(new SimpleMultipartFile(resultFileName, zipFileContent))
+                    .name(resultFileName + "." + format)
+                    .build()
+            result = fileNode
+        }
+
+        if (result == null) {
+            return
+        }
+
+        if (!debug) {
+            context.getApi(FileApi).uploadFile(result)
+        }
+
+        context.setResultFile(result.file.bytes, format, resultFileName)
     }
 
     private void init() {
@@ -1327,31 +1387,31 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         abbreviationsPattern = Pattern.compile("\\b(?:(?:${String.join(')|(?:', abbreviationNames)}))\\b")
     }
 
-    private List<ObjectElement> getSubProcessObjects() {
-        List<ObjectElement> subProcessObjects = []
+    private List<ObjectElement> getSubprocessObjects() {
+        List<ObjectElement> subprocessObjects = []
         if (!context.elementsIdsList().isEmpty()){
             Model model = treeRepository.read(context.modelId().getRepositoryId(), context.modelId().getId())
             List<ObjectElement> allObjects = model.getObjects()
             for (elementId in context.elementsIdsList()) {
                 for (object in allObjects) {
                     if (object.getId() == elementId) {
-                        subProcessObjects.add(object)
+                        subprocessObjects.add(object)
                         break
                     }
                 }
             }
-            subProcessObjects.sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+            subprocessObjects.sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
         }
-        if (subProcessObjects.isEmpty()) {
+        if (subprocessObjects.isEmpty()) {
             throw new SilaScriptException('Скрипт должен запускаться на экземплярах объектов')
         }
-        return subProcessObjects
+        return subprocessObjects
     }
 
-    private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subProcessObjects) {
-        List<SubprocessDescription> subProcessDescriptions = subProcessObjects.collect{ ObjectElement subProcessObject -> new SubprocessDescription(subProcessObject, detailLevel) }
-        subProcessDescriptions.each { SubprocessDescription subprocessDescription -> buildSubProcessDescription(subprocessDescription) }
-        return subProcessDescriptions
+    private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subprocessObjects) {
+        List<SubprocessDescription> subprocessDescriptions = subprocessObjects.collect{ ObjectElement subprocessObject -> new SubprocessDescription(subprocessObject, detailLevel) }
+        subprocessDescriptions.each { SubprocessDescription subprocessDescription -> buildSubProcessDescription(subprocessDescription) }
+        return subprocessDescriptions
     }
 
     private void buildSubProcessDescription(SubprocessDescription subprocess) {
@@ -1378,5 +1438,36 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         subprocess.defineDocumentCollections()
         subprocess.completeDocumentCollections()
         subprocess.analyzeEPCModels()
+    }
+
+    private List<FileInfo> createBPRegulations(List<SubprocessDescription> subprocessDescriptions) {
+        List<FileInfo> files = []
+        subprocessDescriptions.forEach { SubprocessDescription subprocessDescription ->
+            String fileName = DOCX_RESULT_FILE_NAME_FIRST_PART + " '${subprocessDescription.subprocess.function.name}' " + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
+            FileNodeDTO content = getBPRegulationContent(subprocessDescription)
+            files.add(new FileInfo(fileName, content))
+        }
+        return files
+    }
+
+    private FileNodeDTO getBPRegulationContent(SubprocessDescription subprocessDescription) {
+        return null
+    }
+
+    private byte[] createZipFileContent(List<FileInfo> files) {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()
+        ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)
+
+        files.each { FileInfo file ->
+            ZipEntry zipEntry = new ZipEntry(file.fileName + ".docx")
+            zipOutputStream.putNextEntry(zipEntry)
+            zipOutputStream.write(file.content.file.bytes, 0, file.content.file.bytes.length)
+            zipOutputStream.closeEntry()
+        }
+
+        zipOutputStream.close()
+        byteArrayOutputStream.close()
+
+        return byteArrayOutputStream.toByteArray()
     }
 }
