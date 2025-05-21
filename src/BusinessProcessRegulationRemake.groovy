@@ -1,4 +1,5 @@
 import groovy.util.logging.Slf4j
+import org.apache.poi.xwpf.usermodel.XWPFDocument
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
@@ -95,11 +96,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String FILE_REPOSITORY_ID = 'file-folder-root-id'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v6.docx'
+    private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
+    private static final String FILE_REPOSITORY_ID = 'file-folder-root-id'
     private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
+
+    private static final String FILE_NODE_TYPE_ID = 'FILE_FOLDER'
 
     private static final String EPC_MODEL_TYPE_ID = 'MT_EEPC'
     private static final String FUNCTION_ALLOCATION_MODEL_TYPE_ID = 'MT_FUNC_ALLOC_DGM'
@@ -226,6 +231,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static Pattern abbreviationsPattern = null
     private static Map<String, String> foundedAbbreviations = new TreeMap<>()
 
+    private static final boolean DEBUG = true
+    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulation'
+
     CustomScriptContext context
     private TreeRepository treeRepository
 
@@ -233,8 +241,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static String docVersion = ''
     private static String docDate = ''
     private static String currentYear = LocalDate.now().getYear().toString()
-
-    private static boolean debug = true
 
     enum SubprocessOwnerType {
         ORGANIZATIONAL_UNIT,
@@ -1215,6 +1221,41 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
+    private class BusinessProcessRegulationDocument {
+        String fileName
+        SubprocessDescription subprocessDescription
+        XWPFDocument document
+
+        FileNodeDTO content = null
+
+        BusinessProcessRegulationDocument(String fileName, SubprocessDescription subprocessDescription, XWPFDocument template) {
+            this.fileName = fileName
+            this.subprocessDescription = subprocessDescription
+            this.document = template
+        }
+
+        void saveContent() {
+            if (DEBUG) {
+                FileOutputStream file = new FileOutputStream("${TEMPLATE_LOCAL_PATH}\\${fileName}")
+                document.write(file)
+                file.close()
+            }
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
+            document.write(outputStream)
+            byte[] bytes = outputStream.toByteArray()
+            long userId = context.principalId()
+
+            content = FileNodeDTO.builder()
+                    .nodeId(NodeId.builder().id(UUID.randomUUID().toString()).repositoryId(FILE_REPOSITORY_ID).build())
+                    .parentNodeId(NodeId.builder().id(String.valueOf(userId)).repositoryId(FILE_REPOSITORY_ID).build())
+                    .extension(DOCX_FORMAT)
+                    .file(new SimpleMultipartFile(fileName, bytes))
+                    .name(fileName + '.' + DOCX_FORMAT)
+                    .build()
+        }
+    }
+
     private static String getName(TreeNode treeNode) {
         Node node = treeNode._getNode()
         String name = node.getName()
@@ -1282,13 +1323,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<FileInfo> files = createBPRegulations(subprocessDescriptions)
 
         String resultFileName = null
-        FileNodeDTO result = null
         String format = null
+        FileNodeDTO result = null
 
         if (files.size() == 1) {
             resultFileName = files[0].fileName
-            result = files[0].content
             format = DOCX_FORMAT
+            result = files[0].content
         }
 
         if (files.size() > 1) {
@@ -1303,7 +1344,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .parentNodeId(NodeId.builder().id(String.valueOf(userId)).repositoryId(FILE_REPOSITORY_ID).build())
                     .extension(format)
                     .file(new SimpleMultipartFile(resultFileName, zipFileContent))
-                    .name(resultFileName + "." + format)
+                    .name(resultFileName + '.' + format)
                     .build()
             result = fileNode
         }
@@ -1312,7 +1353,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return
         }
 
-        if (!debug) {
+        if (!DEBUG) {
             context.getApi(FileApi).uploadFile(result)
         }
 
@@ -1326,7 +1367,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private void parseParameters() {
-        if (debug) {
+        if (DEBUG) {
             detailLevel = 4
             docVersion = '1.0.0'
             docDate = '01.01.2025'
@@ -1444,14 +1485,60 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<FileInfo> files = []
         subprocessDescriptions.forEach { SubprocessDescription subprocessDescription ->
             String fileName = DOCX_RESULT_FILE_NAME_FIRST_PART + " '${subprocessDescription.subprocess.function.name}' " + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
-            FileNodeDTO content = getBPRegulationContent(subprocessDescription)
-            files.add(new FileInfo(fileName, content))
+            BusinessProcessRegulationDocument document = getBPRegulationDocument(fileName, subprocessDescription)
+            files.add(new FileInfo(document.fileName, document.content))
         }
         return files
     }
 
-    private FileNodeDTO getBPRegulationContent(SubprocessDescription subprocessDescription) {
-        return null
+    private BusinessProcessRegulationDocument getBPRegulationDocument(String fileName, SubprocessDescription subprocessDescription) {
+        XWPFDocument template = getTemplate()
+        BusinessProcessRegulationDocument document = new BusinessProcessRegulationDocument(fileName, subprocessDescription, template)
+
+
+
+        document.saveContent()
+        return document
+    }
+
+    private XWPFDocument getTemplate() {
+        if (DEBUG) {
+            String filePath = "${TEMPLATE_LOCAL_PATH}\\${BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME}"
+            File file = new File(filePath)
+
+            if (!file.exists()) {
+                throw new IOException("Файл ${filePath} не найден")
+            }
+
+            try {
+                FileInputStream fileInputStream = new FileInputStream(file)
+                return new XWPFDocument(fileInputStream)
+            } catch (Exception e) {
+                log.error('Ошибка чтения файла', e)
+            }
+        }
+
+        TreeNode fileFolderTreeNode = context.createTreeRepository(false).read(FILE_REPOSITORY_ID, FILE_REPOSITORY_ID)
+        List<TreeNode> children = fileFolderTreeNode.getChildren()
+
+        TreeNode fileTreeNode = null
+        for (child in children) {
+            if (child.getType().name() == FILE_NODE_TYPE_ID && child.getName() == TEMPLATE_FOLDER_NAME) {
+                List<TreeNode> files = child.getChildren()
+                for (file in files) {
+                    if (file.getName().toLowerCase() == BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME.toLowerCase()) {
+                        fileTreeNode = file
+                        break
+                    }
+                }
+                if (fileTreeNode != null) {
+                    break
+                }
+            }
+        }
+
+        byte[] file = context.getApi(FileApi.class).downloadFile(FILE_REPOSITORY_ID, fileTreeNode.id)
+        return new XWPFDocument(new ByteArrayInputStream(file))
     }
 
     private byte[] createZipFileContent(List<FileInfo> files) {
@@ -1459,7 +1546,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)
 
         files.each { FileInfo file ->
-            ZipEntry zipEntry = new ZipEntry(file.fileName + ".docx")
+            ZipEntry zipEntry = new ZipEntry(file.fileName + '.docx')
             zipOutputStream.putNextEntry(zipEntry)
             zipOutputStream.write(file.content.file.bytes, 0, file.content.file.bytes.length)
             zipOutputStream.closeEntry()
