@@ -1,5 +1,8 @@
 import groovy.util.logging.Slf4j
+import org.apache.poi.xwpf.usermodel.UnderlinePatterns
 import org.apache.poi.xwpf.usermodel.XWPFDocument
+import org.apache.poi.xwpf.usermodel.XWPFParagraph
+import org.apache.poi.xwpf.usermodel.XWPFRun
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
@@ -92,13 +95,69 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     static final String DOC_VERSION_PARAM_NAME = 'Номер версии регламента'
     static final String DOC_DATE_PARAM_NAME = 'Дата утверждения регламента'
 
+    //------------------------------------------------------------------------------------------------------------------
+    // константы для работы с файлами
+    //------------------------------------------------------------------------------------------------------------------
     private static final String DOCX_RESULT_FILE_NAME_FIRST_PART = 'Регламент бизнес-процесса'
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v6.docx'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v7.docx'
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
+    //------------------------------------------------------------------------------------------------------------------
+    // константы шаблона
+    //------------------------------------------------------------------------------------------------------------------
+    private static final String PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY = 'НАЗВАНИЕ ПРОЦЕССА'
+    private static final String PROCESS_CODE_TEMPLATE_KEY = 'Код процесса'
+    private static final String DOC_VERSION_WITH_DATE_TEMPLATE_KEY = 'XX от XX.XX.XXXX'
+    private static final String DOC_YEAR_TEMPLATE_KEY = 'Год'
+    private static final String DOC_VERSION_TEMPLATE_KEY = 'XX'
+    private static final String DOC_DATE_TEMPLATE_KEY = 'XX.XX.XXXX'
+    private static final String PROCESS_NAME_TEMPLATE_KEY = 'Наименование процесса'
+    private static final String FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY = 'ПВУ'
+    private static final String PROCESS_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процессу'
+
+    private static final String PROCESS_OWNER_POSITION_TEMPLATE_KEY = 'Должность владельца процесса'
+    private static final String PROCESS_OWNER_TEMPLATE_KEY = 'Владелец процесса'
+    private static final String REQUISITES_NORMATIVE_DOCUMENT_TEMPLATE_KEY = 'Реквизиты нормативного документа'
+    private static final String PROCESS_GOAL_TEMPLATE_KEY = 'Цель процесса'
+
+    private static final String ABBREVIATION_TEMPLATE_KEY = 'Сокращение'
+    private static final String ABBREVIATION_VALUE_TEMPLATE_KEY = 'Значение сокращения'
+    private static final String BUSINESS_PROCESS_LEVEL_TEMPLATE_KEY = 'Номер уровня БП'
+    private static final String BUSINESS_PROCESS_CODE_TEMPLATE_KEY = 'Код БП'
+    private static final String BUSINESS_PROCESS_NAME_TEMPLATE_KEY = 'Наименование БП'
+    private static final String BUSINESS_PROCESS_PARAGRAPH_NUMBER_TEMPLATE_KEY = 'Номер  раздела для БП'
+    private static final String EXTERNAL_BUSINESS_PROCESS_CODE_TEMPLATE_KEY = 'Код смежного БП'
+    private static final String EXTERNAL_BUSINESS_PROCESS_NAME_TEMPLATE_KEY = 'Смежный БП'
+    private static final String EXTERNAL_BUSINESS_PROCESS_INPUT_TEMPLATE_KEY = 'Вход из смежного БП'
+    private static final String EXTERNAL_BUSINESS_PROCESS_OUTPUT_TEMPLATE_KEY = 'Выход в смежный БП'
+    private static final String PROCESS_ROLE_TEMPLATE_KEY = 'Роль процесса'
+    private static final String PROCESS_ROLE_POSITION_TEMPLATE_KEY = 'Должность для роли'
+    private static final String PROCESS_ROLE_POSITION_ORGANIZATIONAL_UNIT_TEMPLATE_KEY = 'ОЕ для должности'
+    private static final String PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY = 'Набор документов'
+    private static final String PROCESS_DOCUMENT_COLLECTION_CONTAINED_DOCUMENT_TEMPLATE_KEY = 'Документы набора'
+
+    private static final String SCENARIO_CODE_TEMPLATE_KEY = 'Код сценария'
+    private static final String SCENARIO_NAME_TEMPLATE_KEY = 'Сценарий'
+    private static final String SCENARIO_REQUIREMENTS_TEMPLATE_KEY = 'Требования к сценарию'
+    private static final String PROCEDURE_NAME_TEMPLATE_KEY = 'Процедура'
+    private static final String ROLE_NAME_TEMPLATE_KEY = 'Роль'
+    private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
+    private static final String PROCEDURE_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процедуре'
+    private static final String PROCEDURE_INPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Входящий документ/событие'
+    private static final String PROCEDURE_FUNCTION_TEMPLATE_KEY = 'Функция'
+    private static final String PROCEDURE_OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Исходящий документ/событие'
+    private static final String PROCEDURE_PERFORMER_TEMPLATE_KEY = 'Исполнитель'
+    private static final String PROCEDURE_DURATION_TEMPLATE_KEY = 'Длительность'
+    private static final String PROCEDURE_CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
+    private static final String PROCEDURE_INFORMATION_SYSTEM_TEMPLATE_KEY = 'Информационная система'
+    private static final String PROCEDURE_FUNCTION_REQUIREMENTS_TEMPLATE_KEY = 'Требования к функции'
+
+    //------------------------------------------------------------------------------------------------------------------
+    // константы id элементов
+    //------------------------------------------------------------------------------------------------------------------
     private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
     private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
     private static final String FILE_REPOSITORY_ID = 'file-folder-root-id'
@@ -227,12 +286,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SCENARIO_SYMBOL_ID = 'ST_SCENARIO'
     private static final String STATUS_SYMBOL_ID = 'd6e8a7b0-7ce6-11e2-3463-e4115bf4fdb9'
 
+    //------------------------------------------------------------------------------------------------------------------
+    // константы для отладки при разработке
+    //------------------------------------------------------------------------------------------------------------------
+    private static final boolean DEBUG = true
+    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulation'
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    // основной код
+    //------------------------------------------------------------------------------------------------------------------
+    private static final int CM_1_OFFSET = 567 // 1 сантиметр (отступ в документе)
+
     private static Map<String, String> fullAbbreviations = new TreeMap<>()
     private static Pattern abbreviationsPattern = null
     private static Map<String, String> foundedAbbreviations = new TreeMap<>()
-
-    private static final boolean DEBUG = true
-    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulation'
 
     CustomScriptContext context
     private TreeRepository treeRepository
@@ -1234,9 +1302,133 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.document = template
         }
 
+        void replaceSimpleTemplateKeys() {
+            Map<String, String> simpleTemplateMap = getSimpleTemplateMap()
+            for (templateKey in simpleTemplateMap.keySet()) {
+                String placeholder = "<${templateKey}>"
+                String replacement = simpleTemplateMap.get(templateKey)
+
+                if (!replacement) {
+                    continue
+                }
+
+                replaceParagraphsText(placeholder, simpleTemplateMap.get(templateKey))
+                replaceHeadersText(placeholder, simpleTemplateMap.get(templateKey))
+            }
+        }
+
+        private Map<String, String> getSimpleTemplateMap() {
+            String docVersionWithDateTemplateValue = "${docVersion} от ${docDate}"
+            return Map.of(
+                    PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY, subprocessDescription.subprocess.function.name.toUpperCase(),
+                    PROCESS_CODE_TEMPLATE_KEY, subprocessDescription.subprocess.code,
+                    DOC_VERSION_WITH_DATE_TEMPLATE_KEY, docVersionWithDateTemplateValue,
+                    DOC_YEAR_TEMPLATE_KEY, currentYear,
+                    DOC_VERSION_TEMPLATE_KEY, docVersion,
+                    DOC_DATE_TEMPLATE_KEY, docDate,
+                    PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.subprocess.function.name,
+                    FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.parentProcess.function.name,
+                    PROCESS_REQUIREMENTS_TEMPLATE_KEY, subprocessDescription.subprocess.requirements,
+            )
+        }
+
+        private void replaceParagraphsText(String target, String replacement) {
+            for (paragraph in document.getParagraphs()) {
+                replaceText(paragraph, target, replacement)
+            }
+        }
+
+        private void replaceHeadersText(String target, String replacement) {
+            for (header in document.getHeaderList()) {
+                for (headerParagraph in header.getParagraphs()) {
+                    replaceText(headerParagraph, target, replacement)
+                }
+            }
+        }
+
+        private static void replaceText(XWPFParagraph paragraph, String target, String replacement) {
+            if (paragraph.getText().contains(target)) {
+                String newText = paragraph.getText().replace(target, replacement)
+                addText(paragraph, newText)
+            }
+        }
+
+        private static void addText(XWPFParagraph paragraph, String text, int fontSize = -1) {
+            XWPFRun run = getOnlyOneParagraphRun(paragraph)
+
+            if (text.contains('""')) {
+                text = text.replaceAll('""', '"')
+            }
+
+            while (text.startsWith("\\")) {
+                text = parseStyleSymbols(text, run, paragraph)
+            }
+
+            if (fontSize > 0) {
+                run.setFontSize(fontSize);
+            }
+
+            run.setText(text, 0)
+            paragraph.addRun(run)
+        }
+
+        private static XWPFRun getOnlyOneParagraphRun(XWPFParagraph paragraph) {
+            if (paragraph.getRuns()) {
+                while (paragraph.getRuns().size() > 1) {
+                    paragraph.removeRun(1)
+                }
+                return paragraph.getRuns().get(0)
+            }
+
+            return paragraph.createRun()
+        }
+
+        private static String parseStyleSymbols(String text, XWPFRun run, XWPFParagraph paragraph) {
+            if (text.startsWith("\\B")) {
+                run.setBold(true)
+                String newText = text.substring(2)
+                return newText
+            }
+
+            if (text.startsWith("\\!B")) {
+                run.setBold(false)
+                return text.substring(3)
+            }
+
+            if (text.startsWith("\\I")) {
+                run.setItalic(true)
+                return text.substring(2)
+            }
+
+            if (text.startsWith("\\U")) {
+                run.setUnderline(UnderlinePatterns.SINGLE)
+                return text.substring(2)
+            }
+
+            if (text.startsWith("\\L")) {
+                text = text.substring(2)
+
+                try {
+                    String level = text.substring(0, 1)
+                    paragraph.setIndentationLeft(level.toInteger() * CM_1_OFFSET)
+                    return text.substring(1)
+                }
+                catch (Exception ignored) {
+                    paragraph.setIndentationLeft(CM_1_OFFSET)
+                    return text
+                }
+            }
+
+            return text.substring(1)
+        }
+
+        void enforceUpdateFields() {
+            document.enforceUpdateFields()
+        }
+
         void saveContent() {
             if (DEBUG) {
-                FileOutputStream file = new FileOutputStream("${TEMPLATE_LOCAL_PATH}\\${fileName}")
+                FileOutputStream file = new FileOutputStream("${TEMPLATE_LOCAL_PATH}\\${fileName}.${DOCX_FORMAT}")
                 document.write(file)
                 file.close()
             }
@@ -1369,7 +1561,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private void parseParameters() {
         if (DEBUG) {
             detailLevel = 4
-            docVersion = '1.0.0'
+            docVersion = '01'
             docDate = '01.01.2025'
             return
         }
@@ -1494,9 +1686,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private BusinessProcessRegulationDocument getBPRegulationDocument(String fileName, SubprocessDescription subprocessDescription) {
         XWPFDocument template = getTemplate()
         BusinessProcessRegulationDocument document = new BusinessProcessRegulationDocument(fileName, subprocessDescription, template)
+        document.replaceSimpleTemplateKeys()
 
-
-
+        document.enforceUpdateFields()
         document.saveContent()
         return document
     }
