@@ -139,21 +139,24 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY = 'Набор документов'
     private static final String PROCESS_DOCUMENT_COLLECTION_CONTAINED_DOCUMENT_TEMPLATE_KEY = 'Документы набора'
 
+    private static final String PROCESS_MODEL_TEMPLATE_KEY = 'Модель процесса'
     private static final String SCENARIO_CODE_TEMPLATE_KEY = 'Код сценария'
     private static final String SCENARIO_NAME_TEMPLATE_KEY = 'Сценарий'
     private static final String SCENARIO_REQUIREMENTS_TEMPLATE_KEY = 'Требования к сценарию'
+    private static final String SCENARIO_MODEL_TEMPLATE_KEY = 'Модель сценария'
     private static final String PROCEDURE_NAME_TEMPLATE_KEY = 'Процедура'
     private static final String ROLE_NAME_TEMPLATE_KEY = 'Роль'
     private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
     private static final String PROCEDURE_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процедуре'
-    private static final String PROCEDURE_INPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Входящий документ/событие'
-    private static final String PROCEDURE_FUNCTION_TEMPLATE_KEY = 'Функция'
-    private static final String PROCEDURE_OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Исходящий документ/событие'
-    private static final String PROCEDURE_PERFORMER_TEMPLATE_KEY = 'Исполнитель'
-    private static final String PROCEDURE_DURATION_TEMPLATE_KEY = 'Длительность'
-    private static final String PROCEDURE_CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
-    private static final String PROCEDURE_INFORMATION_SYSTEM_TEMPLATE_KEY = 'Информационная система'
-    private static final String PROCEDURE_FUNCTION_REQUIREMENTS_TEMPLATE_KEY = 'Требования к функции'
+    private static final String PROCEDURE_MODEL_TEMPLATE_KEY = 'Модель процедуры'
+    private static final String INPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Входящий документ/событие'
+    private static final String FUNCTION_TEMPLATE_KEY = 'Функция'
+    private static final String OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Исходящий документ/событие'
+    private static final String PERFORMER_TEMPLATE_KEY = 'Исполнитель'
+    private static final String DURATION_TEMPLATE_KEY = 'Длительность'
+    private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
+    private static final String INFORMATION_SYSTEM_TEMPLATE_KEY = 'Информационная система'
+    private static final String FUNCTION_REQUIREMENTS_TEMPLATE_KEY = 'Требования к функции'
 
     //------------------------------------------------------------------------------------------------------------------
     // константы id элементов
@@ -1422,6 +1425,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return text.substring(1)
         }
 
+        void replaceListTemplateKeys() {
+
+        }
+
         void enforceUpdateFields() {
             document.enforceUpdateFields()
         }
@@ -1687,6 +1694,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         XWPFDocument template = getTemplate()
         BusinessProcessRegulationDocument document = new BusinessProcessRegulationDocument(fileName, subprocessDescription, template)
         document.replaceSimpleTemplateKeys()
+        document.replaceListTemplateKeys()
 
         document.enforceUpdateFields()
         document.saveContent()
