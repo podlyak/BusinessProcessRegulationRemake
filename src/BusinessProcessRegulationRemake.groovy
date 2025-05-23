@@ -1,8 +1,12 @@
 import groovy.util.logging.Slf4j
+import org.apache.poi.xwpf.usermodel.IBody
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
 import org.apache.poi.xwpf.usermodel.XWPFRun
+import org.apache.xmlbeans.XmlCursor
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
@@ -1302,7 +1306,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.document = template
         }
 
-        void replaceSimpleTemplateKeys() {
+        void fillSimpleTemplateKeys() {
             Map<String, String> simpleTemplateMap = getSimpleTemplateMap()
             for (templateKey in simpleTemplateMap.keySet()) {
                 String pattern = "<${templateKey}>"
@@ -1332,12 +1336,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             )
         }
 
-        void replaceListTemplateKeys() {
-            replaceProcessOwnerWithPositionTemplateKey()
-            replaceProcessOwnerTemplateKey()
+        void fillListTemplateKeys() {
+            fillProcessOwnerWithPositionTemplateKey()
+            fillRequisitesNormativeDocumentTemplateKey()
+            fillProcessOwnerTemplateKey()
+            fillProcessGoalTemplateKey()
         }
 
-        private void replaceProcessOwnerWithPositionTemplateKey() {
+        private void fillProcessOwnerWithPositionTemplateKey() {
             String pattern = "<${PROCESS_OWNER_POSITION_TEMPLATE_KEY}> <${PROCESS_OWNER_TEMPLATE_KEY}>"
             String placeholderCopy = ", ${pattern}"
             for (owner in subprocessDescription.owners) {
@@ -1365,7 +1371,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(placeholderCopy, '')
         }
 
-        private void replaceProcessOwnerTemplateKey() {
+        private void fillRequisitesNormativeDocumentTemplateKey() {
+            String pattern = "<${REQUISITES_NORMATIVE_DOCUMENT_TEMPLATE_KEY}>"
+            boolean replacementWas = false
+            for (normativeDocument in subprocessDescription.completedNormativeDocuments) {
+                String replacement = normativeDocument.requisites ? normativeDocument.requisites : pattern
+                boolean replacementFlag = replaceInCopyParagraph(document, pattern, replacement)
+                replacementWas = replacementFlag ? replacementFlag : replacementWas
+            }
+
+            if (replacementWas) {
+                removeParagraphByText(document, pattern)
+            }
+        }
+
+        private void fillProcessOwnerTemplateKey() {
             String pattern = "<${PROCESS_OWNER_TEMPLATE_KEY}>"
             String placeholderCopy = ", ${pattern}"
             for (owner in subprocessDescription.owners) {
@@ -1382,6 +1402,38 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(placeholderCopy, '')
         }
 
+        private void fillProcessGoalTemplateKey() {
+            String pattern = "<${PROCESS_GOAL_TEMPLATE_KEY}>"
+            int goalsCount = subprocessDescription.goals.size()
+
+            int counter = 0
+            boolean replacementWas = false
+            for (goal in subprocessDescription.goals) {
+                counter+=1
+                String replacement = goal.name ? goal.name : pattern
+
+                if (counter == goalsCount) {
+                    pattern += ';'
+                    replacement += '.'
+                }
+
+                boolean replacementFlag = replaceInCopyParagraph(document, pattern, replacement)
+                replacementWas = replacementFlag ? replacementFlag : replacementWas
+            }
+
+            if (replacementWas) {
+                removeParagraphByText(document, pattern)
+            }
+        }
+
+        void fillTableTemplateKeys() {
+            fillAbbreviationTemplateKey()
+        }
+
+        private void fillAbbreviationTemplateKey() {
+
+        }
+
         private void replaceParagraphsText(String pattern, String replacement) {
             for (paragraph in document.getParagraphs()) {
                 replaceText(paragraph, pattern, replacement)
@@ -1394,6 +1446,58 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     replaceText(headerParagraph, pattern, replacement)
                 }
             }
+        }
+
+        private static boolean replaceInCopyParagraph(XWPFDocument document, String pattern, String replacement) {
+            if (pattern == replacement) {
+                return false
+            }
+
+            List<XWPFParagraph> paragraphs = findParagraphsByText(document, pattern)
+            paragraphs.each { XWPFParagraph paragraph ->
+                XWPFParagraph newParagraph = addParagraph(document, paragraph)
+                replaceText(newParagraph, pattern, replacement)
+            }
+            return true
+        }
+
+        private static List<XWPFParagraph> findParagraphsByText(IBody body, String text) {
+            return body.getParagraphs()
+                    .findAll { XWPFParagraph paragraph -> paragraph.getText().contains(text) }
+        }
+
+        private static XWPFParagraph addParagraph(XWPFDocument document, XWPFParagraph paragraph) {
+            XmlCursor cursor = paragraph.getCTP().newCursor()
+            XWPFParagraph newParagraph = document.insertNewParagraph(cursor)
+            cloneParagraph(paragraph, newParagraph)
+            return newParagraph
+        }
+
+        private static void cloneParagraph(XWPFParagraph source, XWPFParagraph target) {
+            CTPPr pPr = target.getCTP().isSetPPr() ? target.getCTP().getPPr() : target.getCTP().addNewPPr()
+            pPr.set(source.getCTP().getPPr())
+            for (sourceRun in source.getRuns()) {
+                XWPFRun targetRun = target.createRun()
+                cloneRun(sourceRun, targetRun)
+            }
+        }
+
+        private static void cloneRun(XWPFRun source, XWPFRun target) {
+            CTRPr rPr = target.getCTR().isSetRPr() ? target.getCTR().getRPr() : target.getCTR().addNewRPr()
+            rPr.set(source.getCTR().getRPr())
+            target.setText(source.getText(0))
+        }
+
+        private static void removeParagraphByText(XWPFDocument document, String pattern) {
+            List<XWPFParagraph> paragraphs = findParagraphsByText(document, pattern)
+            paragraphs.each { XWPFParagraph paragraph ->
+                removeParagraph(document, paragraph)
+            }
+        }
+
+        private static void removeParagraph(XWPFDocument document, XWPFParagraph paragraph) {
+            int position = document.getPosOfParagraph(paragraph)
+            document.removeBodyElement(position)
         }
 
         private static void replaceText(XWPFParagraph paragraph, String pattern, String replacement) {
@@ -1415,7 +1519,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             if (fontSize > 0) {
-                run.setFontSize(fontSize);
+                run.setFontSize(fontSize)
             }
 
             run.setText(text, 0)
@@ -1514,20 +1618,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         return fullName ? fullName : name
     }
 
-    private static void findAbbreviations(String name) {
-        Matcher matcher = abbreviationsPattern.matcher(name)
-        while (matcher.find()) {
-            String abbreviationName = name.substring(matcher.start(), matcher.end())
-
-            if (abbreviationName in foundedAbbreviations.keySet()) {
-                continue
-            }
-
-            String abbreviationDescription = fullAbbreviations.get(abbreviationName)
-            foundedAbbreviations.put(abbreviationName, abbreviationDescription)
-        }
-    }
-
     private static String getAttributeValue(TreeNode treeNode, String attributeId) {
         Node node = treeNode._getNode()
         AttributeValue attribute = node.getAttributes().stream()
@@ -1536,7 +1626,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 .orElse(null)
 
         if (attribute != null && attribute.value != null && !attribute.value.trim().isEmpty()) {
-            return trimStringValue(attribute.value)
+            String value = trimStringValue(attribute.value)
+
+            if (value) {
+                findAbbreviations(value)
+            }
+
+            return value
         }
 
         return ''
@@ -1546,6 +1642,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         String resultString = value.replaceAll('\\u00A0', ' ')
         resultString = resultString.replaceAll('[\\s\\n]+', ' ').trim()
         return resultString
+    }
+
+    private static void findAbbreviations(String value) {
+        Matcher matcher = abbreviationsPattern.matcher(value)
+        while (matcher.find()) {
+            String abbreviationName = value.substring(matcher.start(), matcher.end())
+
+            if (abbreviationName in foundedAbbreviations.keySet()) {
+                continue
+            }
+
+            String abbreviationDescription = fullAbbreviations.get(abbreviationName)
+            foundedAbbreviations.put(abbreviationName, abbreviationDescription)
+        }
     }
 
     private static Model getEPCModel(ObjectElement objectElement) {
@@ -1736,8 +1846,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private BusinessProcessRegulationDocument getBPRegulationDocument(String fileName, SubprocessDescription subprocessDescription) {
         XWPFDocument template = getTemplate()
         BusinessProcessRegulationDocument document = new BusinessProcessRegulationDocument(fileName, subprocessDescription, template)
-        document.replaceSimpleTemplateKeys()
-        document.replaceListTemplateKeys()
+        document.fillSimpleTemplateKeys()
+        document.fillListTemplateKeys()
+        document.fillTableTemplateKeys()
 
         document.enforceUpdateFields()
         document.saveContent()
