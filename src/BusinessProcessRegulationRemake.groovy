@@ -479,10 +479,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .findAll { ObjectElement oE -> oE.getSymbolId() == STATUS_SYMBOL_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
-
-            if (statusObjects) {
-                statuses = statusObjects.collect { ObjectElement statusObject -> new CommonObjectInfo(statusObject) }
-            }
+            statuses = statusObjects.collect { ObjectElement statusObject -> new CommonObjectInfo(statusObject) }
         }
     }
 
@@ -1308,15 +1305,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         void replaceSimpleTemplateKeys() {
             Map<String, String> simpleTemplateMap = getSimpleTemplateMap()
             for (templateKey in simpleTemplateMap.keySet()) {
-                String placeholder = "<${templateKey}>"
+                String pattern = "<${templateKey}>"
                 String replacement = simpleTemplateMap.get(templateKey)
 
                 if (!replacement) {
                     continue
                 }
 
-                replaceParagraphsText(placeholder, simpleTemplateMap.get(templateKey))
-                replaceHeadersText(placeholder, simpleTemplateMap.get(templateKey))
+                replaceParagraphsText(pattern, replacement)
+                replaceHeadersText(pattern, replacement)
             }
         }
 
@@ -1335,23 +1332,55 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             )
         }
 
-        private void replaceParagraphsText(String target, String replacement) {
+        void replaceListTemplateKeys() {
+            replaceProcessOwnerWithPositionTemplateKey()
+        }
+
+        private void replaceProcessOwnerWithPositionTemplateKey() {
+            String pattern = "<${PROCESS_OWNER_POSITION_TEMPLATE_KEY}> <${PROCESS_OWNER_TEMPLATE_KEY}>"
+            String placeholderCopy = ", ${pattern}"
+            for (owner in subprocessDescription.owners) {
+                String replacement = ''
+
+                if (owner.type == SubprocessOwnerType.ORGANIZATIONAL_UNIT) {
+                    replacement += owner.leadershipPosition ? owner.leadershipPosition : "<${PROCESS_OWNER_POSITION_TEMPLATE_KEY}>"
+                }
+
+                if (owner.type == SubprocessOwnerType.GROUP) {
+                    replacement += 'группа'
+                }
+
+                replacement += ' '
+                replacement += owner.owner.name ? "«${owner.owner.name}»" : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
+
+                if (pattern == replacement) {
+                    continue
+                }
+
+                replacement += placeholderCopy
+                replaceParagraphsText(pattern, replacement)
+            }
+
+            replaceParagraphsText(placeholderCopy, '')
+        }
+
+        private void replaceParagraphsText(String pattern, String replacement) {
             for (paragraph in document.getParagraphs()) {
-                replaceText(paragraph, target, replacement)
+                replaceText(paragraph, pattern, replacement)
             }
         }
 
-        private void replaceHeadersText(String target, String replacement) {
+        private void replaceHeadersText(String pattern, String replacement) {
             for (header in document.getHeaderList()) {
                 for (headerParagraph in header.getParagraphs()) {
-                    replaceText(headerParagraph, target, replacement)
+                    replaceText(headerParagraph, pattern, replacement)
                 }
             }
         }
 
-        private static void replaceText(XWPFParagraph paragraph, String target, String replacement) {
-            if (paragraph.getText().contains(target)) {
-                String newText = paragraph.getText().replace(target, replacement)
+        private static void replaceText(XWPFParagraph paragraph, String pattern, String replacement) {
+            if (paragraph.getText().contains(pattern)) {
+                String newText = paragraph.getText().replace(pattern, replacement)
                 addText(paragraph, newText)
             }
         }
@@ -1423,10 +1452,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             return text.substring(1)
-        }
-
-        void replaceListTemplateKeys() {
-
         }
 
         void enforceUpdateFields() {
