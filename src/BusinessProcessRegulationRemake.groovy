@@ -1334,6 +1334,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         void replaceListTemplateKeys() {
             replaceProcessOwnerWithPositionTemplateKey()
+            replaceProcessOwnerTemplateKey()
         }
 
         private void replaceProcessOwnerWithPositionTemplateKey() {
@@ -1352,6 +1353,23 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                 replacement += ' '
                 replacement += owner.owner.name ? "«${owner.owner.name}»" : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
+
+                if (pattern == replacement) {
+                    continue
+                }
+
+                replacement += placeholderCopy
+                replaceParagraphsText(pattern, replacement)
+            }
+
+            replaceParagraphsText(placeholderCopy, '')
+        }
+
+        private void replaceProcessOwnerTemplateKey() {
+            String pattern = "<${PROCESS_OWNER_TEMPLATE_KEY}>"
+            String placeholderCopy = ", ${pattern}"
+            for (owner in subprocessDescription.owners) {
+                String replacement = owner.owner.name ? "«${owner.owner.name}»" : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
 
                 if (pattern == replacement) {
                     continue
