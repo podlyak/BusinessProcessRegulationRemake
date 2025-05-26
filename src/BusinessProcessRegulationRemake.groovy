@@ -1405,10 +1405,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void fillRequisitesNormativeDocuments() {
             String pattern = "<${REQUISITES_NORMATIVE_DOCUMENT_TEMPLATE_KEY}>"
+            List<String> requisitesNormativeDocuments = subprocessDescription.completedNormativeDocuments.collect { NormativeDocumentInfo normativeDocument -> normativeDocument.requisites ? normativeDocument.requisites : pattern }
+            requisitesNormativeDocuments = requisitesNormativeDocuments.sort()
+
             boolean replacementWas = false
-            for (normativeDocument in subprocessDescription.completedNormativeDocuments) {
-                String replacement = normativeDocument.requisites ? normativeDocument.requisites : pattern
-                boolean replacementFlag = replaceInCopyParagraph(document, pattern, replacement)
+            for (requisitesNormativeDocument in requisitesNormativeDocuments) {
+                boolean replacementFlag = replaceInCopyParagraph(document, pattern, requisitesNormativeDocument)
                 replacementWas = replacementFlag ? replacementFlag : replacementWas
             }
 
