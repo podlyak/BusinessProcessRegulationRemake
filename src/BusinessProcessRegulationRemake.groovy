@@ -145,6 +145,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             'Наименование процесса',
             'Раздел',
     ]
+    private static final List<String> EXTERNAL_BUSINESS_PROCESS_TABLE_HEADERS = [
+            'Смежный процесс',
+            'Вход из смежного процесса',
+            'Выход в смежный процесс',
+    ]
 
     //------------------------------------------------------------------------------------------------------------------
     // константы шаблона для таблиц
@@ -1456,6 +1461,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         void fillTables() {
             fillAbbreviations()
             fillBusinessProcessHierarchy()
+            fillExternalBusinessProcesses()
         }
 
         private void fillAbbreviations() {
@@ -1518,6 +1524,46 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             XWPFTableRow newTableRow = copyTableRow(table.getRows().get(1), table)
             replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), levelPattern, level)
             replaceParagraphText(newTableRow.getTableCells().get(1).getParagraphs().get(0), namePattern, nameReplacement)
+        }
+
+        private void fillExternalBusinessProcesses() {
+            XWPFTable table = findTableByHeaders(document, EXTERNAL_BUSINESS_PROCESS_TABLE_HEADERS)
+
+            if (table.getRows().size() != 3) {
+                return
+            }
+
+            for (externalProcessDescription in subprocessDescription.completedExternalProcessesWithInputFlows) {
+                fillExternalBusinessProcess(table, externalProcessDescription, EXTERNAL_BUSINESS_PROCESS_INPUT_TEMPLATE_KEY, 1)
+            }
+
+            for (externalProcessDescription in subprocessDescription.completedExternalProcessesWithOutputFlows) {
+                fillExternalBusinessProcess(table, externalProcessDescription, EXTERNAL_BUSINESS_PROCESS_OUTPUT_TEMPLATE_KEY, 2)
+            }
+
+            table.removeRow(1)
+            table.removeRow(1)
+        }
+
+        private void fillExternalBusinessProcess(XWPFTable table, SubprocessDescription.ExternalProcessDescription externalProcessDescription, String flowTemplateKey, int flowColumnNumber) {
+            String namePattern = "<${EXTERNAL_BUSINESS_PROCESS_CODE_TEMPLATE_KEY}> <${EXTERNAL_BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
+            String flowPattern = "<${flowTemplateKey}>"
+
+            String code = externalProcessDescription.externalProcess.code ? externalProcessDescription.externalProcess.code : "<${EXTERNAL_BUSINESS_PROCESS_CODE_TEMPLATE_KEY}>"
+            String name = externalProcessDescription.externalProcess.function.name ? externalProcessDescription.externalProcess.function.name : "<${EXTERNAL_BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
+            String nameReplacement = "${code} ${name}"
+
+            XWPFTableRow newTableRow = copyTableRow(table.getRows().get(flowColumnNumber), table)
+            replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), namePattern, nameReplacement)
+
+            List<String> flowNames = externalProcessDescription.flows.collect { CommonObjectInfo flow -> flow.name ? flow.name : "<${flowTemplateKey}>" }
+            flowNames = flowNames.sort()
+            for (flowName in flowNames) {
+                String flowReplacement = "${flowName};"
+                replaceInCopyParagraph(newTableRow.getTableCells().get(flowColumnNumber), flowPattern, flowReplacement)
+            }
+
+            newTableRow.getTableCells().get(flowColumnNumber).removeParagraph(newTableRow.getTableCells().get(flowColumnNumber).getParagraphs().size() - 1)
         }
 
         private static XWPFTable findTableByHeaders(XWPFDocument document, List<String> tableHeaders) {
@@ -1588,28 +1634,27 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static boolean replaceInCopyParagraph(XWPFDocument document, String pattern, String replacement) {
+        private static boolean replaceInCopyParagraph(IBody body, String pattern, String replacement) {
             if (pattern == replacement) {
                 return false
             }
 
-            List<XWPFParagraph> paragraphs = findParagraphsByText(document, pattern)
+            List<XWPFParagraph> paragraphs = findParagraphsByText(body, pattern)
             paragraphs.each { XWPFParagraph paragraph ->
-                XWPFParagraph newParagraph = addParagraph(document, paragraph)
+                XWPFParagraph newParagraph = addParagraph(body, paragraph)
                 replaceParagraphText(newParagraph, pattern, replacement)
             }
             return true
         }
 
-        // TODO: мб поменять тип аргумента
         private static List<XWPFParagraph> findParagraphsByText(IBody body, String text) {
             return body.getParagraphs()
                     .findAll { XWPFParagraph paragraph -> paragraph.getText().contains(text) }
         }
 
-        private static XWPFParagraph addParagraph(XWPFDocument document, XWPFParagraph paragraph) {
+        private static XWPFParagraph addParagraph(IBody body, XWPFParagraph paragraph) {
             XmlCursor cursor = paragraph.getCTP().newCursor()
-            XWPFParagraph newParagraph = document.insertNewParagraph(cursor)
+            XWPFParagraph newParagraph = body.insertNewParagraph(cursor)
             copyParagraph(paragraph, newParagraph)
             return newParagraph
         }
