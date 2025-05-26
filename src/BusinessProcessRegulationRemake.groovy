@@ -4,6 +4,9 @@ import org.apache.poi.xwpf.usermodel.UnderlinePatterns
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
 import org.apache.poi.xwpf.usermodel.XWPFRun
+import org.apache.poi.xwpf.usermodel.XWPFTable
+import org.apache.poi.xwpf.usermodel.XWPFTableCell
+import org.apache.poi.xwpf.usermodel.XWPFTableRow
 import org.apache.xmlbeans.XmlCursor
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
@@ -110,7 +113,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
-    // константы шаблона
+    // константы шаблона для простого текста
     //------------------------------------------------------------------------------------------------------------------
     private static final String PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY = 'НАЗВАНИЕ ПРОЦЕССА'
     private static final String PROCESS_CODE_TEMPLATE_KEY = 'Код процесса'
@@ -122,11 +125,30 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY = 'ПВУ'
     private static final String PROCESS_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процессу'
 
+    //------------------------------------------------------------------------------------------------------------------
+    // константы шаблона для списков
+    //------------------------------------------------------------------------------------------------------------------
     private static final String PROCESS_OWNER_POSITION_TEMPLATE_KEY = 'Должность владельца процесса'
     private static final String PROCESS_OWNER_TEMPLATE_KEY = 'Владелец процесса'
     private static final String REQUISITES_NORMATIVE_DOCUMENT_TEMPLATE_KEY = 'Реквизиты нормативного документа'
     private static final String PROCESS_GOAL_TEMPLATE_KEY = 'Цель процесса'
 
+    //------------------------------------------------------------------------------------------------------------------
+    // константы заголовков таблиц
+    //------------------------------------------------------------------------------------------------------------------
+    private static final List<String> ABBREVIATION_TABLE_HEADERS = [
+            'Сокращение',
+            'Расшифровка',
+    ]
+    private static final List<String> BUSINESS_PROCESS_HIERARCHY_TABLE_HEADERS = [
+            'Уровень',
+            'Наименование процесса',
+            'Раздел',
+    ]
+
+    //------------------------------------------------------------------------------------------------------------------
+    // константы шаблона для таблиц
+    //------------------------------------------------------------------------------------------------------------------
     private static final String ABBREVIATION_TEMPLATE_KEY = 'Сокращение'
     private static final String ABBREVIATION_VALUE_TEMPLATE_KEY = 'Значение сокращения'
     private static final String BUSINESS_PROCESS_LEVEL_TEMPLATE_KEY = 'Номер уровня БП'
@@ -143,6 +165,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY = 'Набор документов'
     private static final String PROCESS_DOCUMENT_COLLECTION_CONTAINED_DOCUMENT_TEMPLATE_KEY = 'Документы набора'
 
+    //------------------------------------------------------------------------------------------------------------------
+    // константы шаблона для генерируемого раздела
+    //------------------------------------------------------------------------------------------------------------------
     private static final String PROCESS_MODEL_TEMPLATE_KEY = 'Модель процесса'
     private static final String SCENARIO_CODE_TEMPLATE_KEY = 'Код сценария'
     private static final String SCENARIO_NAME_TEMPLATE_KEY = 'Сценарий'
@@ -297,7 +322,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     // константы для отладки при разработке
     //------------------------------------------------------------------------------------------------------------------
     private static final boolean DEBUG = true
-    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulation'
+    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulationRemake\\examples'
 
 
     //------------------------------------------------------------------------------------------------------------------
@@ -1297,16 +1322,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         String fileName
         SubprocessDescription subprocessDescription
         XWPFDocument document
+        int detailLevel
 
         FileNodeDTO content = null
 
-        BusinessProcessRegulationDocument(String fileName, SubprocessDescription subprocessDescription, XWPFDocument template) {
+        BusinessProcessRegulationDocument(String fileName, SubprocessDescription subprocessDescription, XWPFDocument template, int detailLevel) {
             this.fileName = fileName
             this.subprocessDescription = subprocessDescription
             this.document = template
+            this.detailLevel = detailLevel
         }
 
-        void fillSimpleTemplateKeys() {
+        void fillSimpleTexts() {
             Map<String, String> simpleTemplateMap = getSimpleTemplateMap()
             for (templateKey in simpleTemplateMap.keySet()) {
                 String pattern = "<${templateKey}>"
@@ -1336,14 +1363,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             )
         }
 
-        void fillListTemplateKeys() {
-            fillProcessOwnerWithPositionTemplateKey()
-            fillRequisitesNormativeDocumentTemplateKey()
-            fillProcessOwnerTemplateKey()
-            fillProcessGoalTemplateKey()
+        void fillLists() {
+            fillProcessOwnersWithPosition()
+            fillRequisitesNormativeDocuments()
+            fillProcessOwners()
+            fillProcessGoals()
         }
 
-        private void fillProcessOwnerWithPositionTemplateKey() {
+        private void fillProcessOwnersWithPosition() {
             String pattern = "<${PROCESS_OWNER_POSITION_TEMPLATE_KEY}> <${PROCESS_OWNER_TEMPLATE_KEY}>"
             String placeholderCopy = ", ${pattern}"
             for (owner in subprocessDescription.owners) {
@@ -1371,7 +1398,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(placeholderCopy, '')
         }
 
-        private void fillRequisitesNormativeDocumentTemplateKey() {
+        private void fillRequisitesNormativeDocuments() {
             String pattern = "<${REQUISITES_NORMATIVE_DOCUMENT_TEMPLATE_KEY}>"
             boolean replacementWas = false
             for (normativeDocument in subprocessDescription.completedNormativeDocuments) {
@@ -1385,7 +1412,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void fillProcessOwnerTemplateKey() {
+        private void fillProcessOwners() {
             String pattern = "<${PROCESS_OWNER_TEMPLATE_KEY}>"
             String placeholderCopy = ", ${pattern}"
             for (owner in subprocessDescription.owners) {
@@ -1402,7 +1429,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(placeholderCopy, '')
         }
 
-        private void fillProcessGoalTemplateKey() {
+        private void fillProcessGoals() {
             String pattern = "<${PROCESS_GOAL_TEMPLATE_KEY}>"
             int goalsCount = subprocessDescription.goals.size()
 
@@ -1426,24 +1453,137 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        void fillTableTemplateKeys() {
-            fillAbbreviationTemplateKey()
+        void fillTables() {
+            fillAbbreviations()
+            fillBusinessProcessHierarchy()
         }
 
-        private void fillAbbreviationTemplateKey() {
+        private void fillAbbreviations() {
+            XWPFTable table = findTableByHeaders(document, ABBREVIATION_TABLE_HEADERS)
 
+            if (table.getRows().size() != 2) {
+                return
+            }
+
+            String namePattern = "<${ABBREVIATION_TEMPLATE_KEY}>"
+            String valuePattern = "<${ABBREVIATION_VALUE_TEMPLATE_KEY}>"
+            for (abbreviation in foundedAbbreviations) {
+                String nameReplacement = "${abbreviation.key}"
+                String valueReplacement = "${abbreviation.value}"
+
+                XWPFTableRow newTableRow = copyTableRow(table.getRows().get(1), table)
+
+                replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), namePattern, nameReplacement)
+                replaceParagraphText(newTableRow.getTableCells().get(1).getParagraphs().get(0), valuePattern, valueReplacement)
+            }
+
+            if (foundedAbbreviations) {
+                table.removeRow(1)
+            }
+        }
+
+        private void fillBusinessProcessHierarchy() {
+            XWPFTable table = findTableByHeaders(document, BUSINESS_PROCESS_HIERARCHY_TABLE_HEADERS)
+
+            if (table.getRows().size() != 2) {
+                return
+            }
+
+            fillBusinessProcess(table, '1', subprocessDescription.parentProcess.code, subprocessDescription.parentProcess.function.name)
+            fillBusinessProcess(table, '2', subprocessDescription.subprocess.code, subprocessDescription.subprocess.function.name)
+
+            for (scenarioDescription in subprocessDescription.scenarios) {
+                fillBusinessProcess(table, '3', scenarioDescription.scenario.functionInfo.code, scenarioDescription.scenario.functionInfo.function.name)
+
+                if (detailLevel == 3) {
+                    continue
+                }
+
+                for (procedureDescription in scenarioDescription.procedures) {
+                    fillBusinessProcess(table, '4', procedureDescription.procedure.functionInfo.code, procedureDescription.procedure.functionInfo.function.name)
+                }
+            }
+
+            table.removeRow(1)
+        }
+
+        private void fillBusinessProcess(XWPFTable table, String level, String code, String name) {
+            String levelPattern = "<${BUSINESS_PROCESS_LEVEL_TEMPLATE_KEY}>"
+            String namePattern = "<${BUSINESS_PROCESS_CODE_TEMPLATE_KEY}> <${BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
+
+            code = code ? code : "<${BUSINESS_PROCESS_CODE_TEMPLATE_KEY}>"
+            name = name ? name : "<${BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
+            String nameReplacement = "\\L${(level.toInteger() - 1).toString()}${code} ${name}"
+
+            XWPFTableRow newTableRow = copyTableRow(table.getRows().get(1), table)
+            replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), levelPattern, level)
+            replaceParagraphText(newTableRow.getTableCells().get(1).getParagraphs().get(0), namePattern, nameReplacement)
+        }
+
+        private static XWPFTable findTableByHeaders(XWPFDocument document, List<String> tableHeaders) {
+            XWPFTable foundedTable = null
+            for (table in document.getTables()) {
+                if (table.getRows().size() == 0) {
+                    continue
+                }
+
+                if (table.getRows().get(0).getTableCells().size() != tableHeaders.size()) {
+                    continue
+                }
+
+                boolean tableFound = true
+                for (int columnNumber = 0; columnNumber < tableHeaders.size(); columnNumber++) {
+                    String header = tableHeaders[columnNumber]
+                    XWPFTableCell cell = table.getRows().get(0).getTableCells().get(columnNumber)
+
+                    if (cell.getParagraphs().size() == 0) {
+                        tableFound = false
+                        break
+                    }
+
+                    XWPFParagraph paragraph = cell.getParagraphs().get(0)
+                    if (paragraph.getText() != header) {
+                        tableFound = false
+                        break
+                    }
+                }
+
+                if (tableFound) {
+                    foundedTable = table
+                    break
+                }
+            }
+            return foundedTable
+        }
+
+        private static XWPFTableRow copyTableRow(XWPFTableRow sourceRow, XWPFTable table) {
+            XWPFTableRow newRow = table.createRow()
+            newRow.getCtRow().setTrPr(sourceRow.getCtRow().getTrPr())
+
+            for (int cellNumber = 0; cellNumber < sourceRow.getTableCells().size(); cellNumber++) {
+                XWPFTableCell targetCell = newRow.getTableCells().get(cellNumber)
+                XWPFTableCell sourceCell = sourceRow.getTableCells().get(cellNumber)
+                targetCell.getCTTc().setTcPr(sourceCell.getCTTc().getTcPr())
+
+                for (int paragraphNumber = 0; paragraphNumber < sourceCell.getParagraphs().size(); paragraphNumber++) {
+                    XWPFParagraph sourceParagraph = sourceCell.getParagraphs().get(paragraphNumber)
+                    XWPFParagraph targetParagraph = targetCell.getParagraphs().get(paragraphNumber)
+                    copyParagraph(sourceParagraph, targetParagraph)
+                }
+            }
+            return newRow
         }
 
         private void replaceParagraphsText(String pattern, String replacement) {
             for (paragraph in document.getParagraphs()) {
-                replaceText(paragraph, pattern, replacement)
+                replaceParagraphText(paragraph, pattern, replacement)
             }
         }
 
         private void replaceHeadersText(String pattern, String replacement) {
             for (header in document.getHeaderList()) {
                 for (headerParagraph in header.getParagraphs()) {
-                    replaceText(headerParagraph, pattern, replacement)
+                    replaceParagraphText(headerParagraph, pattern, replacement)
                 }
             }
         }
@@ -1456,11 +1596,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<XWPFParagraph> paragraphs = findParagraphsByText(document, pattern)
             paragraphs.each { XWPFParagraph paragraph ->
                 XWPFParagraph newParagraph = addParagraph(document, paragraph)
-                replaceText(newParagraph, pattern, replacement)
+                replaceParagraphText(newParagraph, pattern, replacement)
             }
             return true
         }
 
+        // TODO: мб поменять тип аргумента
         private static List<XWPFParagraph> findParagraphsByText(IBody body, String text) {
             return body.getParagraphs()
                     .findAll { XWPFParagraph paragraph -> paragraph.getText().contains(text) }
@@ -1469,20 +1610,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private static XWPFParagraph addParagraph(XWPFDocument document, XWPFParagraph paragraph) {
             XmlCursor cursor = paragraph.getCTP().newCursor()
             XWPFParagraph newParagraph = document.insertNewParagraph(cursor)
-            cloneParagraph(paragraph, newParagraph)
+            copyParagraph(paragraph, newParagraph)
             return newParagraph
         }
 
-        private static void cloneParagraph(XWPFParagraph source, XWPFParagraph target) {
+        private static void copyParagraph(XWPFParagraph source, XWPFParagraph target) {
             CTPPr pPr = target.getCTP().isSetPPr() ? target.getCTP().getPPr() : target.getCTP().addNewPPr()
             pPr.set(source.getCTP().getPPr())
             for (sourceRun in source.getRuns()) {
                 XWPFRun targetRun = target.createRun()
-                cloneRun(sourceRun, targetRun)
+                copyRun(sourceRun, targetRun)
             }
         }
 
-        private static void cloneRun(XWPFRun source, XWPFRun target) {
+        private static void copyRun(XWPFRun source, XWPFRun target) {
             CTRPr rPr = target.getCTR().isSetRPr() ? target.getCTR().getRPr() : target.getCTR().addNewRPr()
             rPr.set(source.getCTR().getRPr())
             target.setText(source.getText(0))
@@ -1500,14 +1641,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             document.removeBodyElement(position)
         }
 
-        private static void replaceText(XWPFParagraph paragraph, String pattern, String replacement) {
+        private static void replaceParagraphText(XWPFParagraph paragraph, String pattern, String replacement) {
             if (paragraph.getText().contains(pattern)) {
                 String newText = paragraph.getText().replace(pattern, replacement)
-                addText(paragraph, newText)
+                addParagraphText(paragraph, newText)
             }
         }
 
-        private static void addText(XWPFParagraph paragraph, String text, int fontSize = -1) {
+        private static void addParagraphText(XWPFParagraph paragraph, String text, int fontSize = -1) {
             XWPFRun run = getOnlyOneParagraphRun(paragraph)
 
             if (text.contains('""')) {
@@ -1845,10 +1986,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private BusinessProcessRegulationDocument getBPRegulationDocument(String fileName, SubprocessDescription subprocessDescription) {
         XWPFDocument template = getTemplate()
-        BusinessProcessRegulationDocument document = new BusinessProcessRegulationDocument(fileName, subprocessDescription, template)
-        document.fillSimpleTemplateKeys()
-        document.fillListTemplateKeys()
-        document.fillTableTemplateKeys()
+        BusinessProcessRegulationDocument document = new BusinessProcessRegulationDocument(fileName, subprocessDescription, template, detailLevel)
+        document.fillSimpleTexts()
+        document.fillLists()
+        document.fillTables()
 
         document.enforceUpdateFields()
         document.saveContent()
