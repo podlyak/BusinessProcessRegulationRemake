@@ -11,6 +11,7 @@ import org.apache.poi.xwpf.usermodel.XWPFTableRow
 import org.apache.xmlbeans.XmlCursor
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
@@ -186,7 +187,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String PROCESS_DOCUMENT_COLLECTION_CONTAINED_DOCUMENT_TEMPLATE_KEY = 'Документы набора'
 
     //------------------------------------------------------------------------------------------------------------------
-    // константы шаблона для генерируемого раздела
+    // константы шаблона для раздела моделей
     //------------------------------------------------------------------------------------------------------------------
     private static final String PROCESS_MODEL_TEMPLATE_KEY = 'Модель процесса'
     private static final String SCENARIO_CODE_TEMPLATE_KEY = 'Код сценария'
@@ -1782,6 +1783,77 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return foundedTable
         }
 
+        private static XWPFParagraph addParagraph(IBody body, XWPFParagraph paragraph) {
+            XmlCursor cursor = paragraph.getCTP().newCursor()
+            XWPFParagraph newParagraph = body.insertNewParagraph(cursor)
+            copyParagraph(paragraph, newParagraph)
+            return newParagraph
+        }
+
+        private static void addParagraphText(XWPFParagraph paragraph, String text, int fontSize = -1) {
+            XWPFRun run = getOnlyOneParagraphRun(paragraph)
+
+            if (text.contains('""')) {
+                text = text.replaceAll('""', '"')
+            }
+
+            while (text.startsWith("\\")) {
+                text = parseStyleSymbols(text, run, paragraph)
+            }
+
+            if (fontSize > 0) {
+                run.setFontSize(fontSize)
+            }
+
+            List<String> textParts = []
+            String currentTextPart = ''
+            for (int symbolPosition = 0; symbolPosition < text.size(); symbolPosition++) {
+                if (text[symbolPosition] == '<') {
+                    currentTextPart += text[symbolPosition]
+                    textParts.add(currentTextPart)
+                    currentTextPart = ''
+                    continue
+                }
+
+                if (text[symbolPosition] == '>') {
+                    textParts.add(currentTextPart)
+                    currentTextPart = text[symbolPosition]
+                    continue
+                }
+
+                currentTextPart += text[symbolPosition]
+            }
+
+            if (currentTextPart) {
+                textParts.add(currentTextPart)
+            }
+
+            run.setText(textParts[0], 0)
+            paragraph.addRun(run)
+
+            int partNumber = 1
+            for (textPart in textParts) {
+                if (partNumber == 1) {
+                    partNumber++
+                    continue
+                }
+
+                XWPFRun currentRun = paragraph.createRun()
+                copyRun(run, currentRun)
+
+                if (partNumber % 2 == 0) {
+                    CTRPr rPr = currentRun.getCTR().isSetRPr() ? currentRun.getCTR().getRPr() : currentRun.getCTR().addNewRPr()
+                    CTShd cTShd = rPr.addNewShd()
+                    cTShd.setFill("C0C0C0")
+                }
+
+                currentRun.setText(textPart, 0)
+                paragraph.addRun(currentRun)
+
+                partNumber++
+            }
+        }
+
         private static void copyParagraph(XWPFParagraph source, XWPFParagraph target) {
             CTPPr pPr = target.getCTP().isSetPPr() ? target.getCTP().getPPr() : target.getCTP().addNewPPr()
             pPr.set(source.getCTP().getPPr())
@@ -1843,33 +1915,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private static void removeParagraph(XWPFDocument document, XWPFParagraph paragraph) {
             int position = document.getPosOfParagraph(paragraph)
             document.removeBodyElement(position)
-        }
-
-        private static XWPFParagraph addParagraph(IBody body, XWPFParagraph paragraph) {
-            XmlCursor cursor = paragraph.getCTP().newCursor()
-            XWPFParagraph newParagraph = body.insertNewParagraph(cursor)
-            copyParagraph(paragraph, newParagraph)
-            return newParagraph
-        }
-
-        // TODO: окрашивание фона шаблонов в серый
-        private static void addParagraphText(XWPFParagraph paragraph, String text, int fontSize = -1) {
-            XWPFRun run = getOnlyOneParagraphRun(paragraph)
-
-            if (text.contains('""')) {
-                text = text.replaceAll('""', '"')
-            }
-
-            while (text.startsWith("\\")) {
-                text = parseStyleSymbols(text, run, paragraph)
-            }
-
-            if (fontSize > 0) {
-                run.setFontSize(fontSize)
-            }
-
-            run.setText(text, 0)
-            paragraph.addRun(run)
         }
 
         private static XWPFRun getOnlyOneParagraphRun(XWPFParagraph paragraph) {
