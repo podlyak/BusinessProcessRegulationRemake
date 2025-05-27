@@ -150,6 +150,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             'Вход из смежного процесса',
             'Выход в смежный процесс',
     ]
+    private static final List<String> DOCUMENT_COLLECTION_TABLE_HEADERS = [
+            'Набор документов',
+            'Состав набора документов',
+    ]
 
     //------------------------------------------------------------------------------------------------------------------
     // константы шаблона для таблиц
@@ -1464,6 +1468,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             fillAbbreviations()
             fillBusinessProcessHierarchy()
             fillExternalBusinessProcesses()
+            fillDocumentCollections()
         }
 
         private void fillAbbreviations() {
@@ -1528,6 +1533,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphText(newTableRow.getTableCells().get(1).getParagraphs().get(0), namePattern, nameReplacement)
         }
 
+        // TODO: сортировка самих смежных БП
         private void fillExternalBusinessProcesses() {
             XWPFTable table = findTableByHeaders(document, EXTERNAL_BUSINESS_PROCESS_TABLE_HEADERS)
 
@@ -1547,6 +1553,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             table.removeRow(1)
         }
 
+        // TODO: убрать ; в последней записи
         private void fillExternalBusinessProcess(XWPFTable table, SubprocessDescription.ExternalProcessDescription externalProcessDescription, String flowTemplateKey, int flowColumnNumber) {
             String namePattern = "<${EXTERNAL_BUSINESS_PROCESS_CODE_TEMPLATE_KEY}> <${EXTERNAL_BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
             String flowPattern = "<${flowTemplateKey}>"
@@ -1566,6 +1573,45 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             newTableRow.getTableCells().get(flowColumnNumber).removeParagraph(newTableRow.getTableCells().get(flowColumnNumber).getParagraphs().size() - 1)
+        }
+
+        // TODO: убрать ; в последней записи
+        private void fillDocumentCollections() {
+            XWPFTable table = findTableByHeaders(document, DOCUMENT_COLLECTION_TABLE_HEADERS)
+
+            if (table.getRows().size() != 2) {
+                return
+            }
+
+            // TODO: сортировка самих коллекций
+            for (documentCollectionInfo in subprocessDescription.completedDocumentCollections) {
+                String documentCollectionPattern = "<${PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY}>"
+                String containedDocumentPattern = "<${PROCESS_DOCUMENT_COLLECTION_CONTAINED_DOCUMENT_TEMPLATE_KEY}>"
+
+                String documentCollectionReplacement = documentCollectionInfo.collection.document.name ? documentCollectionInfo.collection.document.name : "<${PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY}>"
+                documentCollectionReplacement += " [${documentCollectionInfo.collection.type}]"
+
+                XWPFTableRow newTableRow = copyTableRow(table.getRows().get(1), table)
+                replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), documentCollectionPattern, documentCollectionReplacement)
+
+                List<String> containedDocuments = documentCollectionInfo.containedDocuments.collect { DocumentInfo containedDocument -> (containedDocument.document.name ? containedDocument.document.name : containedDocumentPattern) + " [${containedDocument.type}]"}
+                containedDocuments = containedDocuments.sort()
+                for (containedDocument in containedDocuments) {
+                    String containedDocumentReplacement = "${containedDocument};"
+                    replaceInCopyParagraph(newTableRow.getTableCells().get(1), containedDocumentPattern, containedDocumentReplacement)
+                }
+
+                if (containedDocuments) {
+                    newTableRow.getTableCells().get(1).removeParagraph(newTableRow.getTableCells().get(1).getParagraphs().size() - 1)
+                }
+                else {
+                    addParagraphText(newTableRow.getTableCells().get(1).getParagraphArray(0), '')
+                }
+            }
+
+            if (subprocessDescription.completedDocumentCollections) {
+                table.removeRow(1)
+            }
         }
 
         private static XWPFTable findTableByHeaders(XWPFDocument document, List<String> tableHeaders) {
@@ -1695,6 +1741,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
+        // TODO: окрашивание фона шаблонов в серый
         private static void addParagraphText(XWPFParagraph paragraph, String text, int fontSize = -1) {
             XWPFRun run = getOnlyOneParagraphRun(paragraph)
 
