@@ -1,5 +1,6 @@
 import groovy.util.logging.Slf4j
 import org.apache.poi.util.Units
+import org.apache.poi.xwpf.usermodel.BodyElementType
 import org.apache.poi.xwpf.usermodel.IBody
 import org.apache.poi.xwpf.usermodel.IBodyElement
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment
@@ -118,7 +119,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v7.docx'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v8_no_scenario_comments.docx'
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
@@ -169,10 +170,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     ]
 
     //------------------------------------------------------------------------------------------------------------------
-    // константы частей текста удаляемых параграфов
+    // константы частей текста искомых параграфов
     //------------------------------------------------------------------------------------------------------------------
     private static final String LVL_3_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE = 'Перечень ролей Процесса'
     private static final String LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE = 'Участники процесса указаны в таблицах'
+    private static final String SCENARIO_PARAGRAPH_TEXT_TO_FIND = "Сценарий <${SCENARIO_CODE_TEMPLATE_KEY}> <${SCENARIO_NAME_TEMPLATE_KEY}>"
+    private static final String DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND = 'Состав наборов документов'
 
     //------------------------------------------------------------------------------------------------------------------
     // константы шаблона для таблиц
@@ -206,6 +209,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
     private static final String PROCEDURE_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процедуре'
     private static final String PROCEDURE_MODEL_TEMPLATE_KEY = 'Модель процедуры'
+    private static final String FUNCTION_NUMBER_TEMPLATE_KEY = '№ пп'
     private static final String INPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Входящий документ/событие'
     private static final String FUNCTION_TEMPLATE_KEY = 'Функция'
     private static final String OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Исходящий документ/событие'
@@ -1597,7 +1601,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void fillProcessBusinessRoles() {
             if (detailLevel == 3) {
-                List<IBodyElement> bodiesToDelete = findBodiesToDelete(document, LVL_3_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE, LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE)
+                List<IBodyElement> bodiesToDelete = findBodies(document, LVL_3_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE, LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE)
                 removeBodyElements(document, bodiesToDelete)
             }
 
@@ -1697,10 +1701,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         void fillModels() {
             fillProcessModel()
-
+            fillScenarioModels()
         }
 
-        void fillProcessModel() {
+        private void fillProcessModel() {
             String processModelPattern = "<${PROCESS_MODEL_TEMPLATE_KEY}>"
             List<XWPFParagraph> paragraphs = findParagraphsByText(document, processModelPattern)
 
@@ -1724,12 +1728,26 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 addPicture(modelImageParagraph, processImage, labelModelParagraph)
             }
             else {
-                List<String> els = document.getParagraphs().collect {it.getText()}
                 document.removeBodyElement(modelParagraphPosition + 1)
                 document.removeBodyElement(modelParagraphPosition)
                 document.removeBodyElement(modelParagraphPosition - 1)
                 addParagraphText(document.getParagraphArray(modelParagraphSpecificPos - 2), '')
             }
+        }
+
+        private void fillScenarioModels() {
+            List<IBodyElement> scenarioBodies = findBodies(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
+            copyIBodyElements(scenarioBodies)
+
+
+//            String scenarioPattern = "Сценарий <${SCENARIO_CODE_TEMPLATE_KEY}> <${SCENARIO_NAME_TEMPLATE_KEY}>"
+//            List<XWPFParagraph> paragraphs = findParagraphsByText(document, scenarioPattern)
+//
+//            if (paragraphs.size() != 2) {
+//                throw new Exception('Неверное количество параграфов сценариев')
+//            }
+//
+//            XWPFParagraph scenarioParagraph = paragraphs[1]
         }
 
         private void replaceHeadersText(String pattern, String replacement) {
@@ -1766,29 +1784,34 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static List<IBodyElement> findBodiesToDelete(XWPFDocument document, String startParagraphTextPart, String stopParagraphTextPart) {
-            List<IBodyElement> bodiesToDelete = []
+        private static List<IBodyElement> findBodies(XWPFDocument document, String startParagraphTextPart, String stopParagraphTextPart, int escapeCount = 0) {
+            List<IBodyElement> bodies = []
             for (bodyElement in document.getBodyElements()) {
-                if (bodyElement instanceof XWPFParagraph) {
+                if (!bodies && bodyElement instanceof XWPFParagraph) {
                     XWPFParagraph paragraph = (XWPFParagraph) bodyElement
                     if (paragraph.getText().contains(startParagraphTextPart)) {
-                        bodiesToDelete.add(bodyElement)
-                        continue
+                        if (escapeCount == 0) {
+                            bodies.add(bodyElement)
+                            continue
+                        }
+                        else {
+                            escapeCount-=1
+                        }
                     }
                 }
 
-                if (bodiesToDelete && bodyElement instanceof XWPFParagraph) {
+                if (bodies && bodyElement instanceof XWPFParagraph) {
                     XWPFParagraph paragraph = (XWPFParagraph) bodyElement
                     if (paragraph.getText().contains(stopParagraphTextPart)) {
                         break
                     }
                 }
 
-                if (bodiesToDelete) {
-                    bodiesToDelete.add(bodyElement)
+                if (bodies) {
+                    bodies.add(bodyElement)
                 }
             }
-            return bodiesToDelete
+            return bodies
         }
 
         private static List<XWPFParagraph> findParagraphsByText(IBody body, String text) {
@@ -1980,23 +2003,80 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static void copyParagraph(XWPFParagraph source, XWPFParagraph target) {
-            CTPPr pPr = target.getCTP().isSetPPr() ? target.getCTP().getPPr() : target.getCTP().addNewPPr()
-            pPr.set(source.getCTP().getPPr())
-            for (sourceRun in source.getRuns()) {
-                XWPFRun targetRun = target.createRun()
-                copyRun(sourceRun, targetRun)
+        private static List<IBodyElement> copyIBodyElements(List<IBodyElement> elements, IBody targetBody = null, XmlCursor cursor = null) {
+            if (targetBody == null || cursor == null) {
+                IBodyElement lastElement = elements.get(elements.size() - 1)
+
+                if (targetBody == null)
+                    targetBody = lastElement.getBody()
+
+                if (cursor == null) {
+                    cursor = lastElement.getElementType() == BodyElementType.PARAGRAPH ? ((XWPFParagraph) lastElement).getCTP().newCursor() : ((XWPFTable) lastElement).getCTTbl().newCursor()
+                    cursor.toNextSibling()
+                }
             }
+
+            List<IBodyElement> newElements = []
+            elements.each { IBodyElement element ->
+                newElements.add(copyIBodyElement(element, targetBody, cursor))
+            }
+            return newElements
         }
 
-        private static void copyRun(XWPFRun source, XWPFRun target) {
-            CTRPr rPr = target.getCTR().isSetRPr() ? target.getCTR().getRPr() : target.getCTR().addNewRPr()
-            rPr.set(source.getCTR().getRPr())
-            target.setText(source.getText(0))
+        private static IBodyElement copyIBodyElement(IBodyElement element, IBody targetBody = null, XmlCursor cursor = null) {
+            IBodyElement newElement = null
+
+            if (element.getElementType() == BodyElementType.PARAGRAPH) {
+                if (targetBody == null || cursor == null) {
+                    if (targetBody == null)
+                        targetBody = element.getBody()
+
+                    if (cursor == null) {
+                        cursor = ((XWPFParagraph) element).getCTP().newCursor()
+                        cursor.toNextSibling()
+                    }
+                }
+
+                newElement = targetBody.insertNewParagraph(cursor)
+                copyParagraph((XWPFParagraph) element, (XWPFParagraph) newElement)
+            }
+
+            if (element.getElementType() == BodyElementType.TABLE) {
+                if (targetBody == null || cursor == null) {
+                    targetBody = element.getBody()
+                    cursor = ((XWPFTable) element).getCTTbl().newCursor()
+                }
+
+                newElement = targetBody.insertNewTbl(cursor)
+                ((XWPFTable) newElement).getCTTbl().set(((XWPFTable) element).getCTTbl())
+                copyTable((XWPFTable) element, (XWPFTable) newElement)
+            }
+
+            cursor.toNextToken()
+            return newElement
+        }
+
+        // TODO: удалить неиспользуемое
+        private static void copyTable(XWPFTable source, XWPFTable target) {
+            target.getCTTbl().setTblPr(source.getCTTbl().getTblPr())
+            target.getCTTbl().setTblGrid(source.getCTTbl().getTblGrid())
+
+//            // newly created table has one row by default. we need to remove the default row
+//            target.removeRow(0)
+//
+//            for (int rowNum = 0; rowNum < source.getRows().size(); rowNum++) {
+//                XWPFTableRow sourceRow = source.getRows().get(rowNum)
+//                copyTableRow(sourceRow, target)
+//            }
         }
 
         private static XWPFTableRow copyTableRow(XWPFTableRow sourceRow, XWPFTable table) {
             XWPFTableRow newRow = table.createRow()
+
+            while (newRow.getTableCells().size() > sourceRow.getTableCells().size()) {
+                newRow.removeCell(newRow.getTableCells().size() - 1)
+            }
+
             newRow.getCtRow().setTrPr(sourceRow.getCtRow().getTrPr())
 
             for (int cellNumber = 0; cellNumber < sourceRow.getTableCells().size(); cellNumber++) {
@@ -2011,6 +2091,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
             }
             return newRow
+        }
+
+        private static void copyParagraph(XWPFParagraph source, XWPFParagraph target) {
+            CTPPr pPr = target.getCTP().isSetPPr() ? target.getCTP().getPPr() : target.getCTP().addNewPPr()
+            pPr.set(source.getCTP().getPPr())
+            for (sourceRun in source.getRuns()) {
+                XWPFRun targetRun = target.createRun()
+                copyRun(sourceRun, targetRun)
+            }
+        }
+
+        private static void copyRun(XWPFRun source, XWPFRun target) {
+            CTRPr rPr = target.getCTR().isSetRPr() ? target.getCTR().getRPr() : target.getCTR().addNewRPr()
+            rPr.set(source.getCTR().getRPr())
+            target.setText(source.getText(0))
         }
 
         private static void removeBodyElements(XWPFDocument document, List<IBodyElement> bodiesToDelete) {
