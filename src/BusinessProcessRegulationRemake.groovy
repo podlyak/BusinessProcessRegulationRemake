@@ -1,6 +1,8 @@
 import groovy.util.logging.Slf4j
+import org.apache.poi.util.Units
 import org.apache.poi.xwpf.usermodel.IBody
 import org.apache.poi.xwpf.usermodel.IBodyElement
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
@@ -10,8 +12,11 @@ import org.apache.poi.xwpf.usermodel.XWPFTableCell
 import org.apache.poi.xwpf.usermodel.XWPFTableRow
 import org.apache.xmlbeans.XmlCursor
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STPageOrientation
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
@@ -37,6 +42,8 @@ import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameter
 import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameters
 import ru.nextconsulting.bpm.utils.JsonConverter
 
+import javax.imageio.ImageIO
+import java.awt.image.BufferedImage
 import java.sql.Timestamp
 import java.text.SimpleDateFormat
 import java.time.LocalDate
@@ -1596,6 +1603,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             if (detailLevel == 4) {
                 List<XWPFParagraph> paragraphsToDelete = findParagraphsByText(document, LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE)
+
+                if (paragraphsToDelete.size() != 1) {
+                    throw new Exception('Неверное количество параграфов для удаления в пункте "Участники процеса"')
+                }
+
                 int posOfParagraph = document.getPosOfParagraph(paragraphsToDelete[0])
                 document.removeBodyElement(posOfParagraph)
 
@@ -1680,6 +1692,43 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             if (subprocessDescription.completedDocumentCollections) {
                 table.removeRow(1)
+            }
+        }
+
+        void fillModels() {
+            fillProcessModel()
+
+        }
+
+        void fillProcessModel() {
+            String processModelPattern = "<${PROCESS_MODEL_TEMPLATE_KEY}>"
+            List<XWPFParagraph> paragraphs = findParagraphsByText(document, processModelPattern)
+
+            if (paragraphs.size() != 1) {
+                throw new Exception('Неверное количество параграфов модели процесса')
+            }
+
+            XWPFParagraph modelImageParagraph = paragraphs[0]
+            // позиция относительно всех элемнтов
+            int modelParagraphPosition = document.getPosOfParagraph(modelImageParagraph)
+            // позиция относительно параграфов
+            int modelParagraphSpecificPos = document.getParagraphPos(modelParagraphPosition)
+
+            if (subprocessDescription.processSelectionModel) {
+                while (modelImageParagraph.getRuns().size() > 0) {
+                    modelImageParagraph.removeRun(0)
+                }
+
+                byte[] processImage = subprocessDescription.processSelectionModel.getImagePng()
+                XWPFParagraph labelModelParagraph = document.getParagraphArray(modelParagraphSpecificPos + 1)
+                addPicture(modelImageParagraph, processImage, labelModelParagraph)
+            }
+            else {
+                List<String> els = document.getParagraphs().collect {it.getText()}
+                document.removeBodyElement(modelParagraphPosition + 1)
+                document.removeBodyElement(modelParagraphPosition)
+                document.removeBodyElement(modelParagraphPosition - 1)
+                addParagraphText(document.getParagraphArray(modelParagraphSpecificPos - 2), '')
             }
         }
 
@@ -1781,6 +1830,83 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
             }
             return foundedTable
+        }
+
+        static XWPFParagraph addPicture(XWPFParagraph imageParagraph, byte[] image, XWPFParagraph labelParagraph) {
+            try {
+                if (image.length == 0) {
+                    throw new Exception("Изображение не найдено")
+                }
+
+                XWPFRun run = imageParagraph.createRun()
+                imageParagraph.setAlignment(ParagraphAlignment.CENTER)
+
+                final int longSide = 700
+                final int shortSide = 450
+                final int labelStringHeight = 16
+
+                int labelLength = labelParagraph.getText().size()
+
+                int pageW
+                int pageH
+                int width
+                int height
+
+                try (InputStream is = new ByteArrayInputStream(image)) {
+                    BufferedImage img = ImageIO.read(is)
+
+                    // Если изображение широкое, то разворачиваем страницу
+                    if (img.width > img.height) {
+                        // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
+                        // после данного параграфа автоматически ставится разрыв раздела
+                        setPageOrientation(labelParagraph, STPageOrientation.LANDSCAPE)
+                        int labelStringCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
+                        pageW = longSide
+                        pageH = shortSide - (labelStringCount + 1) * labelStringHeight
+                    } else {
+                        // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
+                        // после данного параграфа автоматически ставится разрыв раздела
+                        setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
+                        int labelStringCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
+                        pageW = shortSide
+                        pageH = longSide - (labelStringCount + 1) * labelStringHeight
+                    }
+
+                    // Если изображение не помещается на страницу, то надо его масштабировать
+                    double scale = 1.0
+                    if (img.width > pageW || img.height > pageH) {
+                        double widthScale = pageW / img.getWidth()
+                        double heightScale = pageH / img.getHeight()
+                        scale = Math.min(widthScale, heightScale)
+                    }
+
+                    width = (int) (img.getWidth() * scale)
+                    height = (int) (img.getHeight() * scale)
+                }
+
+                try (InputStream is = new ByteArrayInputStream(image)) {
+                    run.addPicture(is, XWPFDocument.PICTURE_TYPE_PNG, "image.png", Units.toEMU(width), Units.toEMU(height))
+                }
+            }
+            catch (Exception e) {
+                setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
+                addParagraphText(imageParagraph, "Ошибка вставки изображения: ${e.getMessage()}")
+            }
+
+            return imageParagraph
+        }
+
+        static void setPageOrientation(XWPFParagraph paragraph, STPageOrientation.Enum orientation) {
+            CTSectPr sect = paragraph.getCTPPr().getSectPr() ? paragraph.getCTPPr().getSectPr() : paragraph.getCTPPr().addNewSectPr()
+            CTPageSz pageSize = sect.getPgSz() ? sect.getPgSz() : sect.addNewPgSz()
+            pageSize.setOrient(orientation)
+            if (orientation == STPageOrientation.LANDSCAPE) {
+                pageSize.setW(842 * 20)
+                pageSize.setH(595 * 20)
+            } else {
+                pageSize.setW(595 * 20)
+                pageSize.setH(842 * 20)
+            }
         }
 
         private static XWPFParagraph addParagraph(IBody body, XWPFParagraph paragraph) {
@@ -2240,6 +2366,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         document.fillSimpleTexts()
         document.fillLists()
         document.fillTables()
+        document.fillModels()
 
         document.enforceUpdateFields()
         document.saveContent()
