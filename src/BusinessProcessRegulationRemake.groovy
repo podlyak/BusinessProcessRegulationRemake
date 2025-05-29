@@ -160,22 +160,40 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             'Вход из смежного процесса',
             'Выход в смежный процесс',
     ]
+    private static final List<String> PROCESS_BUSINESS_ROLE_TABLE_HEADERS = [
+            'Роль',
+            'Должности',
+    ]
     private static final List<String> DOCUMENT_COLLECTION_TABLE_HEADERS = [
             'Набор документов',
             'Состав набора документов',
     ]
-    private static final List<String> PROCESS_BUSINESS_ROLE_TABLE_HEADERS = [
-            'Роль',
-            'Должности',
+    private static final List<String> FUNCTIONS_TABLE_HEADERS = [
+            '№ пп',
+            'Входящие документы/события',
+            'Функция',
+            'Исходящие документы/события',
+            'Исполнители',
+            'Длительность выполнения',
+            'Связь с последующими функциями/процессами',
+            'Информационные системы',
+    ]
+    private static final List<String> RESPONSIBILITY_MATRIX_HEADERS = [
+            'Процедура / Роль',
+            "<${BUSINESS_ROLE_NAME_TEMPLATE_KEY}>",
     ]
 
     //------------------------------------------------------------------------------------------------------------------
     // константы частей текста искомых параграфов
     //------------------------------------------------------------------------------------------------------------------
-    private static final String LVL_3_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE = 'Перечень ролей Процесса'
-    private static final String LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE = 'Участники процесса указаны в таблицах'
+    private static final String PROCESS_BUSINESS_ROLES_PARAGRAPH_TEXT_TO_FIND = 'Перечень ролей Процесса'
+    private static final String PROCESS_PARTICIPANTS_PARAGRAPH_TEXT_TO_FIND = 'Участники процесса указаны в таблицах'
     private static final String SCENARIO_PARAGRAPH_TEXT_TO_FIND = "Сценарий <${SCENARIO_CODE_TEMPLATE_KEY}> <${SCENARIO_NAME_TEMPLATE_KEY}>"
     private static final String DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND = 'Состав наборов документов'
+    private static final String REQUIREMENTS_PARAGRAPH_TEXT_TO_FIND = 'Требования к'
+    private static final String RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND = 'Матрица ответственности сценария приведена в таблице'
+    private static final String SCENARIO_FUNCTIONS_TABLE_PARAGRAPH_TEXT_TO_FIND = 'Порядок взаимодействия участников сценария описан в таблице'
+    private static final String PROCEDURE_PARAGRAPH_TEXT_TO_FIND = "Процедура <${PROCEDURE_CODE_TEMPLATE_KEY}> <${PROCEDURE_NAME_TEMPLATE_KEY}>"
 
     //------------------------------------------------------------------------------------------------------------------
     // константы шаблона для таблиц
@@ -204,11 +222,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SCENARIO_NAME_TEMPLATE_KEY = 'Сценарий'
     private static final String SCENARIO_REQUIREMENTS_TEMPLATE_KEY = 'Требования к сценарию'
     private static final String SCENARIO_MODEL_TEMPLATE_KEY = 'Модель сценария'
-    private static final String PROCEDURE_NAME_TEMPLATE_KEY = 'Процедура'
-    private static final String ROLE_NAME_TEMPLATE_KEY = 'Роль'
-    private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
-    private static final String PROCEDURE_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процедуре'
-    private static final String PROCEDURE_MODEL_TEMPLATE_KEY = 'Модель процедуры'
     private static final String FUNCTION_NUMBER_TEMPLATE_KEY = '№ пп'
     private static final String INPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Входящий документ/событие'
     private static final String FUNCTION_TEMPLATE_KEY = 'Функция'
@@ -218,6 +231,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
     private static final String INFORMATION_SYSTEM_TEMPLATE_KEY = 'Информационная система'
     private static final String FUNCTION_REQUIREMENTS_TEMPLATE_KEY = 'Требования к функции'
+    private static final String BUSINESS_ROLE_NAME_TEMPLATE_KEY = 'Роль'
+    private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
+    private static final String PROCEDURE_NAME_TEMPLATE_KEY = 'Процедура'
+    private static final String PROCEDURE_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процедуре'
+    private static final String PROCEDURE_MODEL_TEMPLATE_KEY = 'Модель процедуры'
+
+    //------------------------------------------------------------------------------------------------------------------
+    // константы шаблона для номеров рисунков и таблиц
+    //------------------------------------------------------------------------------------------------------------------
+    private static final String SCENARIO_PICTURE_NUMBER_TEMPLATE_KEY = 'Номер рисунка сценария'
+    private static final String SCENARIO_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников сценария'
+    private static final String SCENARIO_RESPONSIBILITY_MATRIX_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников сценария'
 
     //------------------------------------------------------------------------------------------------------------------
     // константы id элементов
@@ -1601,12 +1626,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void fillProcessBusinessRoles() {
             if (detailLevel == 3) {
-                List<IBodyElement> bodiesToDelete = findBodies(document, LVL_3_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE, LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE)
-                removeBodyElements(document, bodiesToDelete)
+                List<IBodyElement> elementsToDelete = findBodyElements(document, PROCESS_BUSINESS_ROLES_PARAGRAPH_TEXT_TO_FIND, PROCESS_PARTICIPANTS_PARAGRAPH_TEXT_TO_FIND)
+                removeBodyElements(document, elementsToDelete)
             }
 
             if (detailLevel == 4) {
-                List<XWPFParagraph> paragraphsToDelete = findParagraphsByText(document, LVL_4_PARAGRAPH_TEXT_TO_DELETE_FROM_PROCESS_BUSINESS_ROLE)
+                List<XWPFParagraph> paragraphsToDelete = findParagraphsByText(document, PROCESS_PARTICIPANTS_PARAGRAPH_TEXT_TO_FIND)
 
                 if (paragraphsToDelete.size() != 1) {
                     throw new Exception('Неверное количество параграфов для удаления в пункте "Участники процеса"')
@@ -1712,42 +1737,382 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 throw new Exception('Неверное количество параграфов модели процесса')
             }
 
-            XWPFParagraph modelImageParagraph = paragraphs[0]
+            XWPFParagraph imageParagraph = paragraphs[0]
             // позиция относительно всех элемнтов
-            int modelParagraphPosition = document.getPosOfParagraph(modelImageParagraph)
+            int imageParagraphPosition = document.getPosOfParagraph(imageParagraph)
             // позиция относительно параграфов
-            int modelParagraphSpecificPos = document.getParagraphPos(modelParagraphPosition)
+            int imageParagraphSpecificPos = document.getParagraphPos(imageParagraphPosition)
+            // удаление дополнительного разрыва раздела, так как:
+            // 1 - при вставке изображения, после страницы изображения разрыв раздела генерируется автоматически
+            // 2 - при удалении шаблона изображения, разрыв больше не нужен
+            document.removeBodyElement(imageParagraphPosition + 2)
 
             if (subprocessDescription.processSelectionModel) {
-                while (modelImageParagraph.getRuns().size() > 0) {
-                    modelImageParagraph.removeRun(0)
+                while (imageParagraph.getRuns().size() > 0) {
+                    imageParagraph.removeRun(0)
                 }
 
-                byte[] processImage = subprocessDescription.processSelectionModel.getImagePng()
-                XWPFParagraph labelModelParagraph = document.getParagraphArray(modelParagraphSpecificPos + 1)
-                addPicture(modelImageParagraph, processImage, labelModelParagraph)
+                byte[] image = subprocessDescription.processSelectionModel.getImagePng()
+                XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
+                addPicture(imageParagraph, image, labelParagraph)
             }
             else {
-                document.removeBodyElement(modelParagraphPosition + 1)
-                document.removeBodyElement(modelParagraphPosition)
-                document.removeBodyElement(modelParagraphPosition - 1)
-                addParagraphText(document.getParagraphArray(modelParagraphSpecificPos - 2), '')
+                document.removeBodyElement(imageParagraphPosition + 1)
+                document.removeBodyElement(imageParagraphPosition)
+                document.removeBodyElement(imageParagraphPosition - 1)
+                addParagraphText(document.getParagraphArray(imageParagraphSpecificPos - 2), '')
             }
         }
 
         private void fillScenarioModels() {
-            List<IBodyElement> scenarioBodies = findBodies(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
-            copyIBodyElements(scenarioBodies)
+            if (detailLevel == 3) {
+                List<IBodyElement> elementsToDelete = findBodyElements(document, RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND)
+                removeBodyElements(document, elementsToDelete)
+            }
+            else if (detailLevel == 4) {
+                List<IBodyElement> elementsToDelete = findBodyElements(document, SCENARIO_FUNCTIONS_TABLE_PARAGRAPH_TEXT_TO_FIND, RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND)
+                removeBodyElements(document, elementsToDelete)
+            }
 
+            int scenarioNumber = 1
+            for (scenarioDescription in subprocessDescription.scenarios) {
+                List<IBodyElement> scenarioElements = findBodyElements(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
+                List<IBodyElement> newScenarioElements = copyIBodyElements(scenarioElements)
+                restartContentNumbering(newScenarioElements)
 
-//            String scenarioPattern = "Сценарий <${SCENARIO_CODE_TEMPLATE_KEY}> <${SCENARIO_NAME_TEMPLATE_KEY}>"
-//            List<XWPFParagraph> paragraphs = findParagraphsByText(document, scenarioPattern)
+                fillScenario(scenarioDescription, scenarioNumber, scenarioElements)
+
+//                List<IBodyElement> procedureElements = findBodyElements(document, PROCEDURE_PARAGRAPH_TEXT_TO_FIND, SCENARIO_PARAGRAPH_TEXT_TO_FIND, 1)
+//                List<IBodyElement> newProcedureElements = copyIBodyElements(procedureElements)
+//                restartContentNumbering(newProcedureElements)
+
+                scenarioNumber+=1
+            }
+
+            List<IBodyElement> elementsToDelete = findBodyElements(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
+            removeBodyElements(document, elementsToDelete)
+        }
+
+        private void fillScenario(ScenarioDescription description, int number, List<IBodyElement> elements) {
+            String scenarioPattern = "<${SCENARIO_CODE_TEMPLATE_KEY}> <${SCENARIO_NAME_TEMPLATE_KEY}>"
+            String scenarioCode = description.scenario.functionInfo.code ? description.scenario.functionInfo.code : "<${SCENARIO_CODE_TEMPLATE_KEY}>"
+            String scenarioName = description.scenario.functionInfo.function.name ? description.scenario.functionInfo.function.name : "<${SCENARIO_NAME_TEMPLATE_KEY}>"
+            String scenarioReplacement = "${scenarioCode} ${scenarioName}"
+
+            if (scenarioPattern == scenarioReplacement) {
+                throw new Exception("Сценрий [${description.scenario.functionInfo.function.object.getObjectDefinitionId()}] должен иметь либо код, либо имя")
+            }
+
+            replaceParagraphsText(elements, scenarioPattern, scenarioReplacement)
+
+            String requirementsPattern = "<${SCENARIO_REQUIREMENTS_TEMPLATE_KEY}>"
+            String requirementsReplacement = description.scenario.functionInfo.requirements ? description.scenario.functionInfo.requirements : requirementsPattern
+            replaceParagraphsText(elements, requirementsPattern, requirementsReplacement)
+
+            String pictureNumberPattern = "<${SCENARIO_PICTURE_NUMBER_TEMPLATE_KEY}>"
+            String pictureNumberReplacement = "<${SCENARIO_PICTURE_NUMBER_TEMPLATE_KEY} ${number}>"
+            replaceParagraphsText(elements, pictureNumberPattern, pictureNumberReplacement)
+
+            String functionsTableNumberPattern = "<${SCENARIO_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY}>"
+            String functionsTableReplacement = "<${SCENARIO_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY} ${number}>"
+            replaceParagraphsText(elements, functionsTableNumberPattern, functionsTableReplacement)
+
+            String responsibilityMatrixNumberPattern = "<${SCENARIO_RESPONSIBILITY_MATRIX_TABLE_NUMBER_TEMPLATE_KEY}>"
+            String responsibilityMatrixReplacement = "<${SCENARIO_RESPONSIBILITY_MATRIX_TABLE_NUMBER_TEMPLATE_KEY} ${number}>"
+            replaceParagraphsText(elements, responsibilityMatrixNumberPattern, responsibilityMatrixReplacement)
+
+            String modelPattern = "<${SCENARIO_MODEL_TEMPLATE_KEY}>"
+            List<XWPFParagraph> paragraphs = findParagraphsByText(document, modelPattern)
+
+            if (paragraphs.size() != 2) {
+                throw new Exception('Неверное количество параграфов модели процесса')
+            }
+
+            XWPFParagraph imageParagraph = paragraphs[0]
+            // позиция относительно всех элемнтов
+            int imageParagraphPosition = document.getPosOfParagraph(imageParagraph)
+            // позиция относительно параграфов
+            int imageParagraphSpecificPos = document.getParagraphPos(imageParagraphPosition)
+            // удаление дополнительного разрыва раздела, так как:
+            // 1 - при вставке изображения, после страницы изображения разрыв раздела генерируется автоматически
+            // 2 - при удалении шаблона изображения, разрыв больше не нужен
+            document.removeBodyElement(imageParagraphPosition + 2)
+
+            while (imageParagraph.getRuns().size() > 0) {
+                imageParagraph.removeRun(0)
+            }
+
+            byte[] image = description.scenario.model.getImagePng()
+            XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
+            addPicture(imageParagraph, image, labelParagraph)
+
+            if (detailLevel == 3) {
+                XWPFTable table = findTableByHeaders(document, FUNCTIONS_TABLE_HEADERS)
+                List<EPCFunctionDescription> functions = description.scenario.epcFunctions
+
+                if (table.getRows().size() != 3) {
+                    return
+                }
+
+                fillFunctionsTable(table, functions)
+
+                if (functions) {
+                    table.removeRow(2)
+                    table.removeRow(1)
+                }
+            }
+
+            if (detailLevel == 4) {
+                XWPFTable table = findTableByHeaders(document, RESPONSIBILITY_MATRIX_HEADERS)
+
+                if (table.getRows().size() != 2) {
+                    return
+                }
+
+                fillResponsibilityMatrix(table, description)
+
+                if (description.procedures) {
+                    table.removeRow(1)
+                }
+            }
+        }
+
+        private void fillFunctionsTable(XWPFTable table, List<EPCFunctionDescription> functions) {
+            for (function in functions) {
+                XWPFTableRow newFunctionRow = copyTableRow(table.getRows().get(1), table)
+                XWPFTableRow newRequirementsRow = copyTableRow(table.getRows().get(2), table)
+
+                String numberPattern = "<${FUNCTION_NUMBER_TEMPLATE_KEY}>"
+                String numberReplacement = function.number.toString()
+                replaceParagraphText(newFunctionRow.getTableCells().get(0).getParagraphs().get(0), numberPattern, numberReplacement)
+
+                fillFunctionInputs(function, newFunctionRow.getTableCells().get(1))
+
+                String functionPattern = "<${FUNCTION_TEMPLATE_KEY}>"
+                String functionReplacement = function.function.function.name ? function.function.function.name : functionPattern
+                replaceParagraphText(newFunctionRow.getTableCells().get(2).getParagraphs().get(0), functionPattern, functionReplacement)
+
+                fillFunctionOutputs(function, newFunctionRow.getTableCells().get(3))
+                fillPerformers(function, newFunctionRow.getTableCells().get(4))
+
+                String durationPattern = "<${DURATION_TEMPLATE_KEY}>"
+                String durationReplacement = function.duration
+                replaceParagraphText(newFunctionRow.getTableCells().get(5).getParagraphs().get(0), durationPattern, durationReplacement)
+
+                fillChildFunctions(function, newFunctionRow.getTableCells().get(6))
+                fillInformationSystems(function, newFunctionRow.getTableCells().get(7))
+
+                String requirementsPattern = "<${FUNCTION_REQUIREMENTS_TEMPLATE_KEY}>"
+                String requirementsReplacement = function.function.requirements
+                replaceParagraphText(newRequirementsRow.getTableCells().get(0).getParagraphs().get(0), requirementsPattern, requirementsReplacement)
+            }
+        }
+
+        // TODO: убрать ; в последней записи
+        private void fillFunctionInputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String inputPattern = "<${INPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
+
+            List<String> inputs = getInputsOutputs(function.inputDocuments, function.inputEvents, inputPattern)
+            inputs = inputs.sort()
+            for (input in inputs) {
+                String inputReplacement = "${input};"
+                replaceInCopyParagraph(functionTableCell, inputPattern, inputReplacement)
+            }
+
+            if (inputs) {
+                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
+            }
+            else {
+                addParagraphText(functionTableCell.getParagraphArray(0), '')
+            }
+        }
+
+        // TODO: убрать ; в последней записи
+        private void fillFunctionOutputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String outputPattern = "<${OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
+
+            List<String> outputs = getInputsOutputs(function.outputDocuments, function.outputEvents, outputPattern)
+            outputs = outputs.sort()
+            for (output in outputs) {
+                String outputReplacement = "${output};"
+                replaceInCopyParagraph(functionTableCell, outputPattern, outputReplacement)
+            }
+
+            if (outputs) {
+                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
+            }
+            else {
+                addParagraphText(functionTableCell.getParagraphArray(0), '')
+            }
+        }
+
+        private List<String> getInputsOutputs(List<DocumentInfo> documents, List<CommonObjectInfo> events, String inputOutputPattern) {
+            List<String> inputsOutputs = []
+
+            if (documents) {
+                for (document in documents) {
+                    String inputOutput = ''
+                    inputOutput += document.document.name ? document.document.name : inputOutputPattern
+                    inputOutput += " [${document.type}]"
+                    inputOutput += document.statuses ? " (${document.statuses.collect { CommonObjectInfo status -> status.name }.join(', ')})" : ''
+                    inputsOutputs.add(inputOutput)
+                }
+            }
+
+            if (events) {
+                for (event in events) {
+                    String inputOutput = ''
+                    inputOutput += event.name ? event.name : inputOutputPattern
+                    inputOutput += " [событие]"
+                    inputsOutputs.add(inputOutput)
+                }
+            }
+
+            return inputsOutputs
+        }
+
+        private void fillPerformers(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String performerPattern = "<${PERFORMER_TEMPLATE_KEY}>"
+
+            List<String> performers = []
+            for (performerInfo in function.performers) {
+                String performer = ''
+                performer += performerInfo.performer.name ? performerInfo.performer.name : performerPattern
+                performer += " [${performerInfo.action}]"
+                performers.add(performer)
+            }
+
+            performers = performers.sort()
+            for (performer in performers) {
+                String performerReplacement = "${performer};"
+                replaceInCopyParagraph(functionTableCell, performerPattern, performerReplacement)
+            }
+
+            if (performers) {
+                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
+            }
+            else {
+                addParagraphText(functionTableCell.getParagraphArray(0), '')
+            }
+        }
+
+        private void fillChildFunctions(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String childFunctionPattern = "<${CHILD_FUNCTION_TEMPLATE_KEY}>"
+
+            List<String> childFunctions = []
+            for (childEPCFunction in function.childEPCFunctions) {
+                String childFunction = ''
+                childFunction += "Переход к п. ${childEPCFunction.number.toString()}"
+                childFunctions.add(childFunction)
+            }
+
+            for (childExternalFunction in function.childExternalFunctions) {
+                String childFunction = ''
+                childFunction += "Переход к процессу «${childExternalFunction.function.name}»"
+                childFunctions.add(childFunction)
+            }
+
+            for (childFunction in childFunctions) {
+                String childFunctionReplacement = "${childFunction};"
+                replaceInCopyParagraph(functionTableCell, childFunctionPattern, childFunctionReplacement)
+            }
+
+            if (childFunctions) {
+                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
+            }
+            else {
+                addParagraphText(functionTableCell.getParagraphArray(0), '')
+            }
+        }
+
+        private void fillInformationSystems(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String informationSystemPattern = "<${INFORMATION_SYSTEM_TEMPLATE_KEY}>"
+
+            List<String> informationSystems = []
+            for (informationSystemInfo in function.informationSystems) {
+                String informationSystem = ''
+                informationSystem += informationSystemInfo.name ? informationSystemInfo.name : informationSystemPattern
+                informationSystems.add(informationSystem)
+            }
+
+            informationSystems = informationSystems.sort()
+            for (informationSystem in informationSystems) {
+                String informationSystemReplacement = "${informationSystem};"
+                replaceInCopyParagraph(functionTableCell, informationSystemPattern, informationSystemReplacement)
+            }
+
+            if (informationSystems) {
+                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
+            }
+            else {
+                addParagraphText(functionTableCell.getParagraphArray(0), '')
+            }
+        }
+
+        private void fillResponsibilityMatrix(XWPFTable table, ScenarioDescription scenarioDescription) {
+            XWPFTableRow headersRow = table.getRows().get(0)
+            String businessRolePattern = "<${BUSINESS_ROLE_NAME_TEMPLATE_KEY}>"
+
+            List<BusinessRoleInfo> businessRoles = scenarioDescription.getAllBusinessRoles()
+            XWPFTableCell sourceBusinessRoleCell = headersRow.getTableCells().get(1)
+            for (businessRole in businessRoles) {
+                XWPFTableCell targetCell = headersRow.createCell()
+                targetCell = copyTableCell(sourceBusinessRoleCell, targetCell)
+
+                String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
+                replaceParagraphText(targetCell.getParagraphs().get(0), businessRolePattern, businessRoleReplacement)
+            }
+
+            if (businessRoles) {
+                headersRow.removeCell(1)
+
+                XWPFTableRow procedureRow = table.getRows().get(1)
+                XWPFTableCell sourceValueCell = procedureRow.getTableCells().get(1)
+                for (int cellNumber = 2; cellNumber < headersRow.getTableCells().size(); cellNumber++) {
+                    XWPFTableCell targetCell = procedureRow.createCell()
+                    copyTableCell(sourceValueCell, targetCell)
+                }
+            }
+
+            for (procedure in scenarioDescription.procedures) {
+                XWPFTableRow newProcedureRow = copyTableRow(table.getRows().get(1), table)
+
+                String procedurePattern = "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
+                String procedureReplacement = procedure.procedure.functionInfo.function.name ? procedure.procedure.functionInfo.function.name : procedurePattern
+                replaceParagraphText(newProcedureRow.getTableCells().get(0).getParagraphs().get(0), procedurePattern, procedureReplacement)
+
+                List<String> procedureBusinessRoles = procedure.businessRoles.collect { BusinessRoleInfo businessRole -> (businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern) }
+                int cellNumber = 1
+                for (businessRole in businessRoles) {
+                    String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
+
+                    if (!(businessRoleReplacement in procedureBusinessRoles)) {
+                        addParagraphText(newProcedureRow.getTableCells().get(cellNumber).getParagraphs().get(0), '')
+                    }
+
+                    cellNumber+=1
+                }
+            }
+        }
+
+        // TODO: перезапуск нумерации
+        private void restartContentNumbering(List<IBodyElement> elements) {
+            for (element in elements) {
+                if (element.getElementType() == BodyElementType.PARAGRAPH) {
+                    XWPFParagraph paragraph = (XWPFParagraph) element
+                    if (paragraph.getText().startsWith(REQUIREMENTS_PARAGRAPH_TEXT_TO_FIND)) {
+//                        XWPFNum num = document.numbering.getNum(paragraph.getCTP().getPPr().getNumPr().getNumId().getVal())
+//                        CTNumLvl lvlOverride = num.getCTNum().addNewLvlOverride()
+//                        lvlOverride.setIlvl(BigInteger.ZERO)
+//                        CTDecimalNumber number = lvlOverride.addNewStartOverride()
+//                        number.setVal(BigInteger.ONE)
 //
-//            if (paragraphs.size() != 2) {
-//                throw new Exception('Неверное количество параграфов сценариев')
-//            }
-//
-//            XWPFParagraph scenarioParagraph = paragraphs[1]
+//                        paragraph.setNumID(num.getCTNum().getNumId())
+//                        CTNumPr numProp = paragraph.getCTP().getPPr().getNumPr()
+//                        numProp.addNewIlvl().setVal(BigInteger.ZERO)
+                    }
+                }
+            }
         }
 
         private void replaceHeadersText(String pattern, String replacement) {
@@ -1777,6 +2142,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
+        private void replaceParagraphsText(List<IBodyElement> elements, String pattern, String replacement) {
+            for (element in elements) {
+                if (element.getElementType() == BodyElementType.PARAGRAPH) {
+                    replaceParagraphText((XWPFParagraph) element, pattern, replacement)
+                }
+            }
+        }
+
         private static void replaceParagraphText(XWPFParagraph paragraph, String pattern, String replacement) {
             if (paragraph.getText().contains(pattern)) {
                 String newText = paragraph.getText().replace(pattern, replacement)
@@ -1784,14 +2157,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static List<IBodyElement> findBodies(XWPFDocument document, String startParagraphTextPart, String stopParagraphTextPart, int escapeCount = 0) {
-            List<IBodyElement> bodies = []
+        private static List<IBodyElement> findBodyElements(XWPFDocument document, String startParagraphTextPart, String stopParagraphTextPart, int escapeCount = 0) {
+            List<IBodyElement> elements = []
             for (bodyElement in document.getBodyElements()) {
-                if (!bodies && bodyElement instanceof XWPFParagraph) {
+                if (!elements && bodyElement instanceof XWPFParagraph) {
                     XWPFParagraph paragraph = (XWPFParagraph) bodyElement
                     if (paragraph.getText().contains(startParagraphTextPart)) {
                         if (escapeCount == 0) {
-                            bodies.add(bodyElement)
+                            elements.add(bodyElement)
                             continue
                         }
                         else {
@@ -1800,18 +2173,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     }
                 }
 
-                if (bodies && bodyElement instanceof XWPFParagraph) {
+                if (elements && bodyElement instanceof XWPFParagraph) {
                     XWPFParagraph paragraph = (XWPFParagraph) bodyElement
                     if (paragraph.getText().contains(stopParagraphTextPart)) {
                         break
                     }
                 }
 
-                if (bodies) {
-                    bodies.add(bodyElement)
+                if (elements) {
+                    elements.add(bodyElement)
                 }
             }
-            return bodies
+            return elements
         }
 
         private static List<XWPFParagraph> findParagraphsByText(IBody body, String text) {
@@ -2082,15 +2455,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             for (int cellNumber = 0; cellNumber < sourceRow.getTableCells().size(); cellNumber++) {
                 XWPFTableCell targetCell = newRow.getTableCells().get(cellNumber)
                 XWPFTableCell sourceCell = sourceRow.getTableCells().get(cellNumber)
-                targetCell.getCTTc().setTcPr(sourceCell.getCTTc().getTcPr())
-
-                for (int paragraphNumber = 0; paragraphNumber < sourceCell.getParagraphs().size(); paragraphNumber++) {
-                    XWPFParagraph sourceParagraph = sourceCell.getParagraphs().get(paragraphNumber)
-                    XWPFParagraph targetParagraph = targetCell.getParagraphs().get(paragraphNumber)
-                    copyParagraph(sourceParagraph, targetParagraph)
-                }
+                copyTableCell(sourceCell, targetCell)
             }
             return newRow
+        }
+
+        private static XWPFTableCell copyTableCell(XWPFTableCell sourceCell, XWPFTableCell targetCell) {
+            targetCell.getCTTc().setTcPr(sourceCell.getCTTc().getTcPr())
+
+            for (int paragraphNumber = 0; paragraphNumber < sourceCell.getParagraphs().size(); paragraphNumber++) {
+                XWPFParagraph sourceParagraph = sourceCell.getParagraphs().get(paragraphNumber)
+                XWPFParagraph targetParagraph = targetCell.getParagraphs().get(paragraphNumber)
+                copyParagraph(sourceParagraph, targetParagraph)
+            }
+            return targetCell
         }
 
         private static void copyParagraph(XWPFParagraph source, XWPFParagraph target) {
@@ -2108,21 +2486,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             target.setText(source.getText(0))
         }
 
-        private static void removeBodyElements(XWPFDocument document, List<IBodyElement> bodiesToDelete) {
-            bodiesToDelete.each { IBodyElement bodyElement ->
-                int position = -1
+        private static void removeBodyElements(XWPFDocument document, List<IBodyElement> elementsToDelete) {
+            elementsToDelete.each { IBodyElement element ->
+                int elementPosition = -1
 
-                if (bodyElement instanceof XWPFParagraph) {
-                    XWPFParagraph paragraph = (XWPFParagraph) bodyElement
-                    position = document.getPosOfParagraph(paragraph)
+                if (element instanceof XWPFParagraph) {
+                    XWPFParagraph paragraph = (XWPFParagraph) element
+                    elementPosition = document.getPosOfParagraph(paragraph)
                 }
 
-                if (bodyElement instanceof XWPFTable) {
-                    XWPFTable table = (XWPFTable) bodyElement
-                    position = document.getPosOfTable(table)
+                if (element instanceof XWPFTable) {
+                    XWPFTable table = (XWPFTable) element
+                    elementPosition = document.getPosOfTable(table)
                 }
 
-                document.removeBodyElement(position)
+                document.removeBodyElement(elementPosition)
             }
         }
 
