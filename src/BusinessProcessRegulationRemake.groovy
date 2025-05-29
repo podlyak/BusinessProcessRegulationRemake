@@ -243,6 +243,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SCENARIO_PICTURE_NUMBER_TEMPLATE_KEY = 'Номер рисунка сценария'
     private static final String SCENARIO_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников сценария'
     private static final String SCENARIO_RESPONSIBILITY_MATRIX_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников сценария'
+    private static final String PROCEDURE_PICTURE_NUMBER_TEMPLATE_KEY = 'Номер рисунка процедуры'
+    private static final String PROCEDURE_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников процедуры'
 
     //------------------------------------------------------------------------------------------------------------------
     // константы id элементов
@@ -1775,6 +1777,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             int scenarioNumber = 1
+            int procedureNumber = 1
             for (scenarioDescription in subprocessDescription.scenarios) {
                 List<IBodyElement> scenarioElements = findBodyElements(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
                 List<IBodyElement> newScenarioElements = copyIBodyElements(scenarioElements)
@@ -1782,9 +1785,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                 fillScenario(scenarioDescription, scenarioNumber, scenarioElements)
 
-//                List<IBodyElement> procedureElements = findBodyElements(document, PROCEDURE_PARAGRAPH_TEXT_TO_FIND, SCENARIO_PARAGRAPH_TEXT_TO_FIND, 1)
-//                List<IBodyElement> newProcedureElements = copyIBodyElements(procedureElements)
-//                restartContentNumbering(newProcedureElements)
+                if (detailLevel == 4) {
+                    for (procedureDescription in scenarioDescription.procedures) {
+                        List<IBodyElement> procedureElements = findBodyElements(document, PROCEDURE_PARAGRAPH_TEXT_TO_FIND, SCENARIO_PARAGRAPH_TEXT_TO_FIND, 1)
+                        List<IBodyElement> newProcedureElements = copyIBodyElements(procedureElements)
+                        restartContentNumbering(newProcedureElements)
+
+                        fillProcedure(procedureDescription, procedureNumber, procedureElements)
+
+                        procedureNumber+=1
+                    }
+
+                    List<IBodyElement> elementsToDelete = findBodyElements(document, PROCEDURE_PARAGRAPH_TEXT_TO_FIND, SCENARIO_PARAGRAPH_TEXT_TO_FIND, 1)
+                    removeBodyElements(document, elementsToDelete)
+                }
 
                 scenarioNumber+=1
             }
@@ -1825,7 +1839,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<XWPFParagraph> paragraphs = findParagraphsByText(document, modelPattern)
 
             if (paragraphs.size() != 2) {
-                throw new Exception('Неверное количество параграфов модели процесса')
+                throw new Exception('Неверное количество параграфов модели сценария')
             }
 
             XWPFParagraph imageParagraph = paragraphs[0]
@@ -1874,6 +1888,117 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 if (description.procedures) {
                     table.removeRow(1)
                 }
+            }
+        }
+
+        private void fillResponsibilityMatrix(XWPFTable table, ScenarioDescription scenarioDescription) {
+            XWPFTableRow headersRow = table.getRows().get(0)
+            String businessRolePattern = "<${BUSINESS_ROLE_NAME_TEMPLATE_KEY}>"
+
+            List<BusinessRoleInfo> businessRoles = scenarioDescription.getAllBusinessRoles()
+            XWPFTableCell sourceBusinessRoleCell = headersRow.getTableCells().get(1)
+            for (businessRole in businessRoles) {
+                XWPFTableCell targetCell = headersRow.createCell()
+                targetCell = copyTableCell(sourceBusinessRoleCell, targetCell)
+
+                String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
+                replaceParagraphText(targetCell.getParagraphs().get(0), businessRolePattern, businessRoleReplacement)
+            }
+
+            if (businessRoles) {
+                headersRow.removeCell(1)
+
+                XWPFTableRow procedureRow = table.getRows().get(1)
+                XWPFTableCell sourceValueCell = procedureRow.getTableCells().get(1)
+                for (int cellNumber = 2; cellNumber < headersRow.getTableCells().size(); cellNumber++) {
+                    XWPFTableCell targetCell = procedureRow.createCell()
+                    copyTableCell(sourceValueCell, targetCell)
+                }
+            }
+
+            for (procedure in scenarioDescription.procedures) {
+                XWPFTableRow newProcedureRow = copyTableRow(table.getRows().get(1), table)
+
+                String procedurePattern = "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
+                String procedureReplacement = procedure.procedure.functionInfo.function.name ? procedure.procedure.functionInfo.function.name : procedurePattern
+                replaceParagraphText(newProcedureRow.getTableCells().get(0).getParagraphs().get(0), procedurePattern, procedureReplacement)
+
+                List<String> procedureBusinessRoles = procedure.businessRoles.collect { BusinessRoleInfo businessRole -> (businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern) }
+                int cellNumber = 1
+                for (businessRole in businessRoles) {
+                    String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
+
+                    if (!(businessRoleReplacement in procedureBusinessRoles)) {
+                        addParagraphText(newProcedureRow.getTableCells().get(cellNumber).getParagraphs().get(0), '')
+                    }
+
+                    cellNumber+=1
+                }
+            }
+        }
+
+        private void fillProcedure(ProcedureDescription description, int number, List<IBodyElement> elements) {
+            String procedurePattern = "<${PROCEDURE_CODE_TEMPLATE_KEY}> <${PROCEDURE_NAME_TEMPLATE_KEY}>"
+            String procedureCode = description.procedure.functionInfo.code ? description.procedure.functionInfo.code : "<${PROCEDURE_CODE_TEMPLATE_KEY}>"
+            String procedureName = description.procedure.functionInfo.function.name ? description.procedure.functionInfo.function.name : "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
+            String procedureReplacement = "${procedureCode} ${procedureName}"
+
+            if (procedurePattern == procedureReplacement) {
+                throw new Exception("Процедура [${description.procedure.functionInfo.function.object.getObjectDefinitionId()}] должна иметь либо код, либо имя")
+            }
+
+            replaceParagraphsText(elements, procedurePattern, procedureReplacement)
+
+            String requirementsPattern = "<${PROCEDURE_REQUIREMENTS_TEMPLATE_KEY}>"
+            String requirementsReplacement = description.procedure.functionInfo.requirements ? description.procedure.functionInfo.requirements : requirementsPattern
+            replaceParagraphsText(elements, requirementsPattern, requirementsReplacement)
+
+            String pictureNumberPattern = "<${PROCEDURE_PICTURE_NUMBER_TEMPLATE_KEY}>"
+            String pictureNumberReplacement = "<${PROCEDURE_PICTURE_NUMBER_TEMPLATE_KEY} ${number}>"
+            replaceParagraphsText(elements, pictureNumberPattern, pictureNumberReplacement)
+
+            String functionsTableNumberPattern = "<${PROCEDURE_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY}>"
+            String functionsTableReplacement = "<${PROCEDURE_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY} ${number}>"
+            replaceParagraphsText(elements, functionsTableNumberPattern, functionsTableReplacement)
+
+            String modelPattern = "<${PROCEDURE_MODEL_TEMPLATE_KEY}>"
+            List<XWPFParagraph> paragraphs = findParagraphsByText(document, modelPattern)
+
+            if (paragraphs.size() != 3) {
+                throw new Exception('Неверное количество параграфов модели процедуры')
+            }
+
+            XWPFParagraph imageParagraph = paragraphs[0]
+            // позиция относительно всех элемнтов
+            int imageParagraphPosition = document.getPosOfParagraph(imageParagraph)
+            // позиция относительно параграфов
+            int imageParagraphSpecificPos = document.getParagraphPos(imageParagraphPosition)
+            // удаление дополнительного разрыва раздела, так как:
+            // 1 - при вставке изображения, после страницы изображения разрыв раздела генерируется автоматически
+            // 2 - при удалении шаблона изображения, разрыв больше не нужен
+            document.removeBodyElement(imageParagraphPosition + 2)
+
+            while (imageParagraph.getRuns().size() > 0) {
+                imageParagraph.removeRun(0)
+            }
+
+            byte[] image = description.procedure.model.getImagePng()
+            XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
+            addPicture(imageParagraph, image, labelParagraph)
+
+
+            XWPFTable table = findTableByHeaders(document, FUNCTIONS_TABLE_HEADERS)
+            List<EPCFunctionDescription> functions = description.procedure.epcFunctions
+
+            if (table.getRows().size() != 3) {
+                return
+            }
+
+            fillFunctionsTable(table, functions)
+
+            if (functions) {
+                table.removeRow(2)
+                table.removeRow(1)
             }
         }
 
@@ -2046,52 +2171,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
             else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
-            }
-        }
-
-        private void fillResponsibilityMatrix(XWPFTable table, ScenarioDescription scenarioDescription) {
-            XWPFTableRow headersRow = table.getRows().get(0)
-            String businessRolePattern = "<${BUSINESS_ROLE_NAME_TEMPLATE_KEY}>"
-
-            List<BusinessRoleInfo> businessRoles = scenarioDescription.getAllBusinessRoles()
-            XWPFTableCell sourceBusinessRoleCell = headersRow.getTableCells().get(1)
-            for (businessRole in businessRoles) {
-                XWPFTableCell targetCell = headersRow.createCell()
-                targetCell = copyTableCell(sourceBusinessRoleCell, targetCell)
-
-                String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
-                replaceParagraphText(targetCell.getParagraphs().get(0), businessRolePattern, businessRoleReplacement)
-            }
-
-            if (businessRoles) {
-                headersRow.removeCell(1)
-
-                XWPFTableRow procedureRow = table.getRows().get(1)
-                XWPFTableCell sourceValueCell = procedureRow.getTableCells().get(1)
-                for (int cellNumber = 2; cellNumber < headersRow.getTableCells().size(); cellNumber++) {
-                    XWPFTableCell targetCell = procedureRow.createCell()
-                    copyTableCell(sourceValueCell, targetCell)
-                }
-            }
-
-            for (procedure in scenarioDescription.procedures) {
-                XWPFTableRow newProcedureRow = copyTableRow(table.getRows().get(1), table)
-
-                String procedurePattern = "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
-                String procedureReplacement = procedure.procedure.functionInfo.function.name ? procedure.procedure.functionInfo.function.name : procedurePattern
-                replaceParagraphText(newProcedureRow.getTableCells().get(0).getParagraphs().get(0), procedurePattern, procedureReplacement)
-
-                List<String> procedureBusinessRoles = procedure.businessRoles.collect { BusinessRoleInfo businessRole -> (businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern) }
-                int cellNumber = 1
-                for (businessRole in businessRoles) {
-                    String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
-
-                    if (!(businessRoleReplacement in procedureBusinessRoles)) {
-                        addParagraphText(newProcedureRow.getTableCells().get(cellNumber).getParagraphs().get(0), '')
-                    }
-
-                    cellNumber+=1
-                }
             }
         }
 
