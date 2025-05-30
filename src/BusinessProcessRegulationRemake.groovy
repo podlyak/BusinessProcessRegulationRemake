@@ -5,18 +5,28 @@ import org.apache.poi.xwpf.usermodel.IBody
 import org.apache.poi.xwpf.usermodel.IBodyElement
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns
+import org.apache.poi.xwpf.usermodel.XWPFAbstractNum
 import org.apache.poi.xwpf.usermodel.XWPFDocument
+import org.apache.poi.xwpf.usermodel.XWPFNum
+import org.apache.poi.xwpf.usermodel.XWPFNumbering
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
 import org.apache.poi.xwpf.usermodel.XWPFRun
 import org.apache.poi.xwpf.usermodel.XWPFTable
 import org.apache.poi.xwpf.usermodel.XWPFTableCell
 import org.apache.poi.xwpf.usermodel.XWPFTableRow
 import org.apache.xmlbeans.XmlCursor
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTAbstractNum
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTDecimalNumber
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTLvl
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTNumLvl
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STJc
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STNumberFormat
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STPageOrientation
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
@@ -191,6 +201,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SCENARIO_PARAGRAPH_TEXT_TO_FIND = "Сценарий <${SCENARIO_CODE_TEMPLATE_KEY}> <${SCENARIO_NAME_TEMPLATE_KEY}>"
     private static final String DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND = 'Состав наборов документов'
     private static final String REQUIREMENTS_PARAGRAPH_TEXT_TO_FIND = 'Требования к'
+    private static final String PICTURE_PARAGRAPH_TEXT_TO_FIND = 'На рисунке'
+    private static final String FUNCTIONS_PARAGRAPH_TEXT_TO_FIND = 'Порядок взаимодействия участников'
     private static final String RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND = 'Матрица ответственности сценария приведена в таблице'
     private static final String SCENARIO_FUNCTIONS_TABLE_PARAGRAPH_TEXT_TO_FIND = 'Порядок взаимодействия участников сценария описан в таблице'
     private static final String PROCEDURE_PARAGRAPH_TEXT_TO_FIND = "Процедура <${PROCEDURE_CODE_TEMPLATE_KEY}> <${PROCEDURE_NAME_TEMPLATE_KEY}>"
@@ -1382,6 +1394,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         SubprocessDescription subprocessDescription
         XWPFDocument document
         int detailLevel
+        XWPFNumbering numbering
 
         FileNodeDTO content = null
 
@@ -1390,6 +1403,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.subprocessDescription = subprocessDescription
             this.document = template
             this.detailLevel = detailLevel
+            this.numbering = document.numbering
         }
 
         void fillSimpleTexts() {
@@ -1781,7 +1795,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             for (scenarioDescription in subprocessDescription.scenarios) {
                 List<IBodyElement> scenarioElements = findBodyElements(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
                 List<IBodyElement> newScenarioElements = copyIBodyElements(scenarioElements)
-                restartContentNumbering(newScenarioElements)
+                setNewNumbering(newScenarioElements)
 
                 fillScenario(scenarioDescription, scenarioNumber, scenarioElements)
 
@@ -1789,7 +1803,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     for (procedureDescription in scenarioDescription.procedures) {
                         List<IBodyElement> procedureElements = findBodyElements(document, PROCEDURE_PARAGRAPH_TEXT_TO_FIND, SCENARIO_PARAGRAPH_TEXT_TO_FIND, 1)
                         List<IBodyElement> newProcedureElements = copyIBodyElements(procedureElements)
-                        restartContentNumbering(newProcedureElements)
+                        setNewNumbering(newProcedureElements)
 
                         fillProcedure(procedureDescription, procedureNumber, procedureElements)
 
@@ -2174,24 +2188,55 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        // TODO: перезапуск нумерации, static нет
-        private void restartContentNumbering(List<IBodyElement> elements) {
+        private void setNewNumbering(List<IBodyElement> elements) {
+            BigInteger numID = null
             for (element in elements) {
                 if (element.getElementType() == BodyElementType.PARAGRAPH) {
                     XWPFParagraph paragraph = (XWPFParagraph) element
-                    if (paragraph.getText().startsWith(REQUIREMENTS_PARAGRAPH_TEXT_TO_FIND)) {
-//                        XWPFNum num = document.numbering.getNum(paragraph.getCTP().getPPr().getNumPr().getNumId().getVal())
-//                        CTNumLvl lvlOverride = num.getCTNum().addNewLvlOverride()
-//                        lvlOverride.setIlvl(BigInteger.ZERO)
-//                        CTDecimalNumber number = lvlOverride.addNewStartOverride()
-//                        number.setVal(BigInteger.ONE)
-//
-//                        paragraph.setNumID(num.getCTNum().getNumId())
-//                        CTNumPr numProp = paragraph.getCTP().getPPr().getNumPr()
-//                        numProp.addNewIlvl().setVal(BigInteger.ZERO)
+                    String text = paragraph.getText()
+
+                    if (text.startsWith(REQUIREMENTS_PARAGRAPH_TEXT_TO_FIND)) {
+                        numID = getNewSimpleNumberingId()
+                    }
+
+                    if (text.startsWith(REQUIREMENTS_PARAGRAPH_TEXT_TO_FIND)
+                            || text.startsWith(PICTURE_PARAGRAPH_TEXT_TO_FIND)
+                            || text.startsWith(FUNCTIONS_PARAGRAPH_TEXT_TO_FIND)
+                            || text.startsWith(RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND)
+                    ) {
+                        paragraph.setNumID(numID)
                     }
                 }
             }
+        }
+
+        private BigInteger getNewSimpleNumberingId() {
+            CTAbstractNum cTAbstractNum = CTAbstractNum.Factory.newInstance()
+            cTAbstractNum.setAbstractNumId(BigInteger.valueOf(0))
+
+            CTLvl cTLvl = cTAbstractNum.addNewLvl()
+            cTLvl.setIlvl(BigInteger.valueOf(0))
+            cTLvl.addNewNumFmt().setVal(STNumberFormat.DECIMAL)
+            cTLvl.addNewLvlText().setVal("%1.")
+            cTLvl.addNewLvlJc().setVal(STJc.LEFT)
+            cTLvl.addNewStart().setVal(BigInteger.valueOf(1))
+
+            cTLvl.addNewRPr()
+            CTFonts f = cTLvl.getRPr().addNewRFonts()
+            f.setAscii('Times New Roman')
+            f.setHAnsi('Times New Roman')
+
+            XWPFAbstractNum abstractNum = new XWPFAbstractNum(cTAbstractNum)
+            BigInteger abstractNumId = numbering.addAbstractNum(abstractNum)
+            BigInteger numId = numbering.addNum(abstractNumId)
+
+            XWPFNum num = numbering.getNum(numId)
+            CTNumLvl lvlOverride = num.getCTNum().addNewLvlOverride()
+            lvlOverride.setIlvl(BigInteger.ZERO)
+            CTDecimalNumber number = lvlOverride.addNewStartOverride()
+            number.setVal(BigInteger.ONE)
+
+            return numId
         }
 
         private void replaceHeadersText(String pattern, String replacement) {
