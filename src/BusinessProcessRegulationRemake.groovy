@@ -1861,7 +1861,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             addPicture(imageParagraph, image, labelParagraph)
 
             if (detailLevel == 3) {
-                XWPFTable table = findTableByHeaders(document, FUNCTIONS_TABLE_HEADERS)
+                XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
                 List<EPCFunctionDescription> functions = description.scenario.epcFunctions
 
                 if (table.getRows().size() != 3) {
@@ -1877,7 +1877,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             if (detailLevel == 4) {
-                XWPFTable table = findTableByHeaders(document, RESPONSIBILITY_MATRIX_HEADERS)
+                XWPFTable table = findTableByHeaders(elements, RESPONSIBILITY_MATRIX_HEADERS)
 
                 if (table.getRows().size() != 2) {
                     return
@@ -1891,7 +1891,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void fillResponsibilityMatrix(XWPFTable table, ScenarioDescription scenarioDescription) {
+        private static void fillResponsibilityMatrix(XWPFTable table, ScenarioDescription scenarioDescription) {
             XWPFTableRow headersRow = table.getRows().get(0)
             String businessRolePattern = "<${BUSINESS_ROLE_NAME_TEMPLATE_KEY}>"
 
@@ -1987,7 +1987,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             addPicture(imageParagraph, image, labelParagraph)
 
 
-            XWPFTable table = findTableByHeaders(document, FUNCTIONS_TABLE_HEADERS)
+            XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
             List<EPCFunctionDescription> functions = description.procedure.epcFunctions
 
             if (table.getRows().size() != 3) {
@@ -2002,7 +2002,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void fillFunctionsTable(XWPFTable table, List<EPCFunctionDescription> functions) {
+        private static void fillFunctionsTable(XWPFTable table, List<EPCFunctionDescription> functions) {
             for (function in functions) {
                 XWPFTableRow newFunctionRow = copyTableRow(table.getRows().get(1), table)
                 XWPFTableRow newRequirementsRow = copyTableRow(table.getRows().get(2), table)
@@ -2034,7 +2034,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         // TODO: убрать ; в последней записи
-        private void fillFunctionInputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+        private static void fillFunctionInputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String inputPattern = "<${INPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
 
             List<String> inputs = getInputsOutputs(function.inputDocuments, function.inputEvents, inputPattern)
@@ -2053,7 +2053,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         // TODO: убрать ; в последней записи
-        private void fillFunctionOutputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+        private static void fillFunctionOutputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String outputPattern = "<${OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
 
             List<String> outputs = getInputsOutputs(function.outputDocuments, function.outputEvents, outputPattern)
@@ -2071,7 +2071,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private List<String> getInputsOutputs(List<DocumentInfo> documents, List<CommonObjectInfo> events, String inputOutputPattern) {
+        private static List<String> getInputsOutputs(List<DocumentInfo> documents, List<CommonObjectInfo> events, String inputOutputPattern) {
             List<String> inputsOutputs = []
 
             if (documents) {
@@ -2096,7 +2096,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return inputsOutputs
         }
 
-        private void fillPerformers(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+        private static void fillPerformers(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String performerPattern = "<${PERFORMER_TEMPLATE_KEY}>"
 
             List<String> performers = []
@@ -2121,7 +2121,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void fillChildFunctions(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+        private static void fillChildFunctions(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String childFunctionPattern = "<${CHILD_FUNCTION_TEMPLATE_KEY}>"
 
             List<String> childFunctions = []
@@ -2150,7 +2150,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void fillInformationSystems(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+        private static void fillInformationSystems(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String informationSystemPattern = "<${INFORMATION_SYSTEM_TEMPLATE_KEY}>"
 
             List<String> informationSystems = []
@@ -2174,7 +2174,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        // TODO: перезапуск нумерации
+        // TODO: перезапуск нумерации, static нет
         private void restartContentNumbering(List<IBodyElement> elements) {
             for (element in elements) {
                 if (element.getElementType() == BodyElementType.PARAGRAPH) {
@@ -2221,7 +2221,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private void replaceParagraphsText(List<IBodyElement> elements, String pattern, String replacement) {
+        private static void replaceParagraphsText(List<IBodyElement> elements, String pattern, String replacement) {
             for (element in elements) {
                 if (element.getElementType() == BodyElementType.PARAGRAPH) {
                     replaceParagraphText((XWPFParagraph) element, pattern, replacement)
@@ -2274,30 +2274,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private static XWPFTable findTableByHeaders(XWPFDocument document, List<String> tableHeaders) {
             XWPFTable foundedTable = null
             for (table in document.getTables()) {
-                if (table.getRows().size() == 0) {
-                    continue
-                }
-
-                if (table.getRows().get(0).getTableCells().size() != tableHeaders.size()) {
-                    continue
-                }
-
-                boolean tableFound = true
-                for (int columnNumber = 0; columnNumber < tableHeaders.size(); columnNumber++) {
-                    String header = tableHeaders[columnNumber]
-                    XWPFTableCell cell = table.getRows().get(0).getTableCells().get(columnNumber)
-
-                    if (cell.getParagraphs().size() == 0) {
-                        tableFound = false
-                        break
-                    }
-
-                    XWPFParagraph paragraph = cell.getParagraphs().get(0)
-                    if (paragraph.getText() != header) {
-                        tableFound = false
-                        break
-                    }
-                }
+                boolean tableFound = tableHasHeaders(table, tableHeaders)
 
                 if (tableFound) {
                     foundedTable = table
@@ -2307,7 +2284,49 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return foundedTable
         }
 
-        static XWPFParagraph addPicture(XWPFParagraph imageParagraph, byte[] image, XWPFParagraph labelParagraph) {
+        private static XWPFTable findTableByHeaders(List<IBodyElement> elements, List<String> tableHeaders) {
+            XWPFTable foundedTable = null
+            for (element in elements) {
+                if (element.getElementType() == BodyElementType.TABLE) {
+                    XWPFTable table = (XWPFTable) element
+                    boolean tableFound = tableHasHeaders(table, tableHeaders)
+
+                    if (tableFound) {
+                        foundedTable = table
+                        break
+                    }
+                }
+            }
+            return foundedTable
+        }
+
+        private static boolean tableHasHeaders(XWPFTable table, List<String> headers) {
+            if (table.getRows().size() == 0) {
+                return false
+            }
+
+            if (table.getRows().get(0).getTableCells().size() != headers.size()) {
+                return false
+            }
+
+            for (int columnNumber = 0; columnNumber < headers.size(); columnNumber++) {
+                String header = headers[columnNumber]
+                XWPFTableCell cell = table.getRows().get(0).getTableCells().get(columnNumber)
+
+                if (cell.getParagraphs().size() == 0) {
+                    return false
+                }
+
+                XWPFParagraph paragraph = cell.getParagraphs().get(0)
+                if (paragraph.getText() != header) {
+                    return false
+                }
+            }
+
+            return true
+        }
+
+        private static XWPFParagraph addPicture(XWPFParagraph imageParagraph, byte[] image, XWPFParagraph labelParagraph) {
             try {
                 if (image.length == 0) {
                     throw new Exception("Изображение не найдено")
@@ -2337,14 +2356,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                         setPageOrientation(labelParagraph, STPageOrientation.LANDSCAPE)
                         int labelStringCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
                         pageW = longSide
-                        pageH = shortSide - (labelStringCount + 1) * labelStringHeight
+                        pageH = shortSide - labelStringCount * labelStringHeight
                     } else {
                         // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
                         // после данного параграфа автоматически ставится разрыв раздела
                         setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
                         int labelStringCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
                         pageW = shortSide
-                        pageH = longSide - (labelStringCount + 1) * labelStringHeight
+                        pageH = longSide - labelStringCount * labelStringHeight
                     }
 
                     // Если изображение не помещается на страницу, то надо его масштабировать
@@ -2371,7 +2390,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return imageParagraph
         }
 
-        static void setPageOrientation(XWPFParagraph paragraph, STPageOrientation.Enum orientation) {
+        private static void setPageOrientation(XWPFParagraph paragraph, STPageOrientation.Enum orientation) {
             CTSectPr sect = paragraph.getCTPPr().getSectPr() ? paragraph.getCTPPr().getSectPr() : paragraph.getCTPPr().addNewSectPr()
             CTPageSz pageSize = sect.getPgSz() ? sect.getPgSz() : sect.addNewPgSz()
             pageSize.setOrient(orientation)
@@ -2500,7 +2519,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
 
                 newElement = targetBody.insertNewTbl(cursor)
-                ((XWPFTable) newElement).getCTTbl().set(((XWPFTable) element).getCTTbl())
                 copyTable((XWPFTable) element, (XWPFTable) newElement)
             }
 
@@ -2508,18 +2526,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return newElement
         }
 
-        // TODO: удалить неиспользуемое
         private static void copyTable(XWPFTable source, XWPFTable target) {
             target.getCTTbl().setTblPr(source.getCTTbl().getTblPr())
             target.getCTTbl().setTblGrid(source.getCTTbl().getTblGrid())
 
-//            // newly created table has one row by default. we need to remove the default row
-//            target.removeRow(0)
-//
-//            for (int rowNum = 0; rowNum < source.getRows().size(); rowNum++) {
-//                XWPFTableRow sourceRow = source.getRows().get(rowNum)
-//                copyTableRow(sourceRow, target)
-//            }
+            // по умолчанию в таблице создается одна строка, удаляем её
+            target.removeRow(0)
+
+            for (int rowNum = 0; rowNum < source.getRows().size(); rowNum++) {
+                XWPFTableRow sourceRow = source.getRows().get(rowNum)
+                copyTableRow(sourceRow, target)
+            }
         }
 
         private static XWPFTableRow copyTableRow(XWPFTableRow sourceRow, XWPFTable table) {
@@ -2527,6 +2544,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             while (newRow.getTableCells().size() > sourceRow.getTableCells().size()) {
                 newRow.removeCell(newRow.getTableCells().size() - 1)
+            }
+
+            while (newRow.getTableCells().size() < sourceRow.getTableCells().size()) {
+                newRow.createCell()
             }
 
             newRow.getCtRow().setTrPr(sourceRow.getCtRow().getTrPr())
@@ -2845,7 +2866,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         Set<String> abbreviationNames = fullAbbreviations.keySet()
-        //noinspection RegExpUnnecessaryNonCapturingGroup
+        // noinspection RegExpUnnecessaryNonCapturingGroup
         abbreviationsPattern = Pattern.compile("\\b(?:(?:${String.join(')|(?:', abbreviationNames)}))\\b")
     }
 
