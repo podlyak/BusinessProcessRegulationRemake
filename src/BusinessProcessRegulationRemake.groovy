@@ -2718,12 +2718,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         void saveContent() {
-            if (DEBUG) {
-                FileOutputStream file = new FileOutputStream("${TEMPLATE_LOCAL_PATH}\\${fileName}.${DOCX_FORMAT}")
-                document.write(file)
-                file.close()
-            }
-
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
             document.write(outputStream)
             byte[] bytes = outputStream.toByteArray()
@@ -2981,6 +2975,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         subprocessDescriptions.forEach { SubprocessDescription subprocessDescription ->
             String fileName = DOCX_RESULT_FILE_NAME_FIRST_PART + " '${subprocessDescription.subprocess.function.name}' " + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
             BusinessProcessRegulationDocument document = getBPRegulationDocument(fileName, subprocessDescription)
+
+            if (DEBUG) {
+                FileOutputStream file = new FileOutputStream("${TEMPLATE_LOCAL_PATH}\\${fileName}.${DOCX_FORMAT}")
+                document.document.write(file)
+                file.close()
+            }
+
             files.add(new FileInfo(document.fileName, document.content))
         }
         return files
