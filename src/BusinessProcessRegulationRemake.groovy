@@ -78,12 +78,14 @@ void execute() {
         @SilaScriptParameter(
                 name = DOC_VERSION_PARAM_NAME,
                 type = SilaScriptParamType.STRING,
-                required = true
+                required = false,
+                defaultValue = ''
         ),
         @SilaScriptParameter(
                 name = DOC_DATE_PARAM_NAME,
                 type = SilaScriptParamType.DATE,
-                required = true
+                required = false,
+                defaultValue = ''
         ),
 ])
 @Slf4j
@@ -647,11 +649,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private class FileInfo {
-        String fileName
+        String name
         FileNodeDTO content = null
 
-        FileInfo(String fileName, FileNodeDTO content) {
-            this.fileName = fileName
+        FileInfo(String name, FileNodeDTO content) {
+            this.name = name
             this.content = content
         }
     }
@@ -2814,7 +2816,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         FileNodeDTO result = null
 
         if (files.size() == 1) {
-            resultFileName = files[0].fileName
+            resultFileName = files[0].name
             format = DOCX_FORMAT
             result = files[0].content
         }
@@ -2866,8 +2868,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         docVersion = ParamUtils.parse(context.findParameter(DOC_VERSION_PARAM_NAME)) as String
 
-        Timestamp approvalDate = ParamUtils.parse(context.findParameter(DOC_DATE_PARAM_NAME)) as Timestamp
-        docDate = approvalDate.format('dd.MM.yyyy')
+        String docDateParam = ParamUtils.parse(context.findParameter(DOC_DATE_PARAM_NAME)) as String
+        if (docDateParam) {
+            Timestamp approvalDate = ParamUtils.parse(context.findParameter(DOC_DATE_PARAM_NAME)) as Timestamp
+            docDate = approvalDate.format('dd.MM.yyyy')
+        }
+        else {
+            docDate = docDateParam
+        }
     }
 
     private void initAbbreviations() {
@@ -3036,7 +3044,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)
 
         files.each { FileInfo file ->
-            ZipEntry zipEntry = new ZipEntry(file.fileName + '.docx')
+            ZipEntry zipEntry = new ZipEntry(file.name + '.docx')
             zipOutputStream.putNextEntry(zipEntry)
             zipOutputStream.write(file.content.file.bytes, 0, file.content.file.bytes.length)
             zipOutputStream.closeEntry()
