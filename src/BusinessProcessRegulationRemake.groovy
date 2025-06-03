@@ -16,6 +16,7 @@ import org.apache.poi.xwpf.usermodel.XWPFTableCell
 import org.apache.poi.xwpf.usermodel.XWPFTableRow
 import org.apache.xmlbeans.XmlCursor
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTAbstractNum
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBookmark
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTDecimalNumber
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTLvl
@@ -25,6 +26,7 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSimpleField
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STJc
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STNumberFormat
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STPageOrientation
@@ -131,7 +133,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v8_no_scenario_comments.docx'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v9.docx'
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
@@ -256,7 +258,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     //------------------------------------------------------------------------------------------------------------------
     private static final String SCENARIO_PICTURE_NUMBER_TEMPLATE_KEY = 'Номер рисунка сценария'
     private static final String SCENARIO_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников сценария'
-    private static final String SCENARIO_RESPONSIBILITY_MATRIX_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников сценария'
+    private static final String SCENARIO_RESPONSIBILITY_MATRIX_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы матрица ответственности сценария'
     private static final String PROCEDURE_PICTURE_NUMBER_TEMPLATE_KEY = 'Номер рисунка процедуры'
     private static final String PROCEDURE_FUNCTIONS_TABLE_NUMBER_TEMPLATE_KEY = 'Номер таблицы порядок взаимодействия участников процедуры'
 
@@ -2241,6 +2243,195 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return numId
         }
 
+        void setLabelNumbers() {
+            setTableNumbers()
+            setPictureNumbers()
+        }
+
+        private void setTableNumbers() {
+            Pattern tableNumberPattern = Pattern.compile('Таблица <(.*?)>')
+            List<XWPFParagraph> foundedParagraphs = findParagraphsByPattern(document, tableNumberPattern)
+            Map<String, String> numberTemplateBookmarkMap = setNumbers(document, foundedParagraphs, tableNumberPattern, 'Table')
+
+            for (paragraph in foundedParagraphs) {
+                removeParagraph(document, paragraph)
+            }
+
+            for (numberTemplate in numberTemplateBookmarkMap.keySet()) {
+                foundedParagraphs = findParagraphsByText(document, numberTemplate)
+                setRefsToNumber(document, foundedParagraphs, numberTemplate, numberTemplateBookmarkMap.get(numberTemplate))
+
+                for (paragraph in foundedParagraphs) {
+                    removeParagraph(document, paragraph)
+                }
+            }
+        }
+
+        private void setPictureNumbers() {
+            Pattern pictureNumberPattern = Pattern.compile('Рисунок <(.*?)>')
+            List<XWPFParagraph> foundedParagraphs = findParagraphsByPattern(document, pictureNumberPattern)
+            Map<String, String> numberTemplateBookmarkMap = setNumbers(document, foundedParagraphs, pictureNumberPattern, 'Picture')
+
+            for (paragraph in foundedParagraphs) {
+                removeParagraph(document, paragraph)
+            }
+
+            for (numberTemplate in numberTemplateBookmarkMap.keySet()) {
+                foundedParagraphs = findParagraphsByText(document, numberTemplate)
+                setRefsToNumber(document, foundedParagraphs, numberTemplate, numberTemplateBookmarkMap.get(numberTemplate))
+
+                for (paragraph in foundedParagraphs) {
+                    removeParagraph(document, paragraph)
+                }
+            }
+        }
+
+        private static Map<String, String> setNumbers(IBody body, List<XWPFParagraph> paragraphs, Pattern templatePattern, String name) {
+            Map<String, String> numberTemplateBookmarkMap = new HashMap<>()
+            int number = 0
+            for (sourceParagraph in paragraphs) {
+                number += 1
+
+                XmlCursor cursor = sourceParagraph.getCTP().newCursor()
+                XWPFParagraph newParagraph = body.insertNewParagraph(cursor)
+                CTPPr pPr = newParagraph.getCTP().isSetPPr() ? newParagraph.getCTP().getPPr() : newParagraph.getCTP().addNewPPr()
+                pPr.set(sourceParagraph.getCTP().getPPr())
+
+                boolean templateFound = false
+                boolean templateParsed = false
+                for (sourceRun in sourceParagraph.getRuns()) {
+                    String sourceRunText = sourceRun.getText(0)
+
+                    if (templateParsed) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        continue
+                    }
+
+                    if (!templateFound && sourceRunText && sourceRunText.contains('<')) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        String newText = sourceRunText.substring(0, sourceRunText.size() - 1)
+                        targetRun.setText(newText, 0)
+                        templateFound = true
+                        continue
+                    }
+
+                    if (!templateParsed && sourceRunText && sourceRunText.contains('>')) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        targetRun.setText('', 0)
+
+                        String bookmarkName = "${name}_${number}"
+                        CTBookmark bookmark = newParagraph.getCTP().addNewBookmarkStart()
+                        bookmark.setName(bookmarkName)
+                        bookmark.setId(BigInteger.valueOf(0)) // ?
+
+                        CTSimpleField ctSimpleField = newParagraph.getCTP().addNewFldSimple()
+                        ctSimpleField.setInstr("SEQ ${name} \\* MERGEFORMAT")
+
+                        newParagraph.getCTP().addNewBookmarkEnd().setId(BigInteger.valueOf(0)) // ?
+
+                        String paragraphText = sourceParagraph.getText()
+                        Matcher matcher = templatePattern.matcher(paragraphText)
+                        matcher.find()
+                        String templateContent = matcher.group(1)
+                        numberTemplateBookmarkMap.put(templateContent, bookmarkName)
+
+                        targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        String newText = sourceRunText.substring(1)
+                        targetRun.setText(newText, 0)
+                        templateParsed = true
+                    }
+
+                    if (!templateFound) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                    }
+                }
+            }
+            return numberTemplateBookmarkMap
+        }
+
+        private static void setRefsToNumber(IBody body, List<XWPFParagraph> paragraphs, String numberTemplate, String bookmarkName) {
+            for (sourceParagraph in paragraphs) {
+                XmlCursor cursor = sourceParagraph.getCTP().newCursor()
+                XWPFParagraph newParagraph = body.insertNewParagraph(cursor)
+                CTPPr pPr = newParagraph.getCTP().isSetPPr() ? newParagraph.getCTP().getPPr() : newParagraph.getCTP().addNewPPr()
+                pPr.set(sourceParagraph.getCTP().getPPr())
+
+                boolean templateFound = false
+                boolean templateParsed = false
+                XWPFRun beforeRun = null
+                List<XWPFRun> templateRuns = []
+                for (sourceRun in sourceParagraph.getRuns()) {
+                    String sourceRunText = sourceRun.getText(0)
+
+                    if (templateParsed) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        continue
+                    }
+
+                    if (!templateFound && sourceRunText && sourceRunText.contains('<')) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+
+                        beforeRun = targetRun
+                        templateFound = true
+                        continue
+                    }
+
+                    if (!templateParsed && sourceRunText && sourceRunText.contains('>')) {
+                        List<String> templateRunTexts = templateRuns.collect { XWPFRun run -> run.getText(0) }
+                        String templateText = templateRunTexts.join('')
+
+                        if (templateText != numberTemplate) {
+                            beforeRun = null
+
+                            for (templateRun in templateRuns) {
+                                XWPFRun targetRun = newParagraph.createRun()
+                                copyRun(templateRun, targetRun)
+                            }
+
+                            XWPFRun targetRun = newParagraph.createRun()
+                            copyRun(sourceRun, targetRun)
+
+                            templateFound = false
+                            continue
+                        }
+
+                        String beforeRunText = beforeRun.getText(0)
+                        String newText = beforeRunText.substring(0, beforeRunText.size() - 1)
+                        beforeRun.setText(newText, 0)
+
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        targetRun.setText('', 0)
+
+                        CTSimpleField ctSimpleField = newParagraph.getCTP().addNewFldSimple()
+                        ctSimpleField.setInstr("REF ${bookmarkName} \\h")
+
+                        targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                        newText = sourceRunText.substring(1)
+                        targetRun.setText(newText, 0)
+                        templateParsed = true
+                    }
+
+                    if (!templateFound) {
+                        XWPFRun targetRun = newParagraph.createRun()
+                        copyRun(sourceRun, targetRun)
+                    }
+
+                    if (templateFound) {
+                        templateRuns.add(sourceRun)
+                    }
+                }
+            }
+        }
+
         private void replaceHeadersText(String pattern, String replacement) {
             for (header in document.getHeaderList()) {
                 for (headerParagraph in header.getParagraphs()) {
@@ -2311,6 +2502,19 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
             }
             return elements
+        }
+
+        private static List<XWPFParagraph> findParagraphsByPattern(IBody body, Pattern pattern) {
+            List<XWPFParagraph> foundedParagraphs = []
+            for (paragraph in body.getParagraphs()) {
+                String paragraphText = paragraph.getText()
+                Matcher matcher = pattern.matcher(paragraphText)
+
+                if (matcher.find()) {
+                    foundedParagraphs.add(paragraph)
+                }
+            }
+            return foundedParagraphs
         }
 
         private static List<XWPFParagraph> findParagraphsByText(IBody body, String text) {
@@ -2994,7 +3198,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         document.fillLists()
         document.fillTables()
         document.fillModels()
-
+        document.setLabelNumbers()
         document.enforceUpdateFields()
         document.saveContent()
         return document
