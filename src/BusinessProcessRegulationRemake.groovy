@@ -1426,7 +1426,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private Map<String, String> getSimpleTemplateMap() {
-            String docVersionWithDateTemplateValue = "${docVersion} от ${docDate}"
+            String docVersionWithDateTemplateValue
+            if (docVersion && docDate) {
+                docVersionWithDateTemplateValue = "${docVersion} от ${docDate}"
+            }
+            else if (docVersion && !docDate) {
+                docVersionWithDateTemplateValue = "${docVersion} от ${DOC_DATE_TEMPLATE_KEY}"
+            }
+            else if (!docVersion && docDate) {
+                docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${docDate}"
+            }
+            else {
+                docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${DOC_DATE_TEMPLATE_KEY}"
+            }
+
             return Map.of(
                     PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY, subprocessDescription.subprocess.function.name.toUpperCase(),
                     PROCESS_CODE_TEMPLATE_KEY, subprocessDescription.subprocess.code,
@@ -3140,7 +3153,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         String deep = ParamUtils.parse(context.findParameter(DETAIL_LEVEL_PARAM_NAME)) as String
         detailLevel = Integer.parseInt(deep.replaceAll('[^0-9]+', ''))
 
-        docVersion = ParamUtils.parse(context.findParameter(DOC_VERSION_PARAM_NAME)) as String
+        String docVersionParam = ParamUtils.parse(context.findParameter(DOC_VERSION_PARAM_NAME)) as String
+        if (docVersionParam) {
+            docVersion = docVersionParam
+        }
+        else {
+            docVersion = ''
+        }
 
         String docDateParam = ParamUtils.parse(context.findParameter(DOC_DATE_PARAM_NAME)) as String
         if (docDateParam) {
@@ -3148,7 +3167,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             docDate = approvalDate.format('dd.MM.yyyy')
         }
         else {
-            docDate = docDateParam
+            docDate = ''
         }
     }
 
