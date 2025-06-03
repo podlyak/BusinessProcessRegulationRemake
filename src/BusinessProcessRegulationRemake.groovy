@@ -2097,7 +2097,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     String inputOutput = ''
                     inputOutput += document.document.name ? document.document.name : inputOutputPattern
                     inputOutput += " [${document.type}]"
-                    inputOutput += document.statuses ? " (${document.statuses.collect { CommonObjectInfo status -> status.name }.join(', ')})" : ''
+                    inputOutput += document.statuses ? " (${String.join(', ', document.statuses.collect { CommonObjectInfo status -> status.name })})" : ''
                     inputsOutputs.add(inputOutput)
                 }
             }
@@ -2250,18 +2250,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void setTableNumbers() {
             Pattern tableNumberPattern = Pattern.compile('Таблица <(.*?)>')
-            List<XWPFParagraph> foundedParagraphs = findParagraphsByPattern(document, tableNumberPattern)
-            Map<String, String> numberTemplateBookmarkMap = setNumbers(document, foundedParagraphs, tableNumberPattern, 'Table')
+            List<XWPFParagraph> tableLabelParagraphs = findParagraphsByPattern(document, tableNumberPattern)
+            Map<String, String> numberTemplateBookmarkMap = setNumbers(document, tableLabelParagraphs, tableNumberPattern, 'Table')
 
-            for (paragraph in foundedParagraphs) {
+            for (paragraph in tableLabelParagraphs) {
                 removeParagraph(document, paragraph)
             }
 
             for (numberTemplate in numberTemplateBookmarkMap.keySet()) {
-                foundedParagraphs = findParagraphsByText(document, numberTemplate)
-                setRefsToNumber(document, foundedParagraphs, numberTemplate, numberTemplateBookmarkMap.get(numberTemplate))
+                List<XWPFParagraph> tableNumberParagraphs = findParagraphsByText(document, numberTemplate)
+                setRefsToNumber(document, tableNumberParagraphs, numberTemplate, numberTemplateBookmarkMap.get(numberTemplate))
 
-                for (paragraph in foundedParagraphs) {
+                for (paragraph in tableNumberParagraphs) {
                     removeParagraph(document, paragraph)
                 }
             }
@@ -2269,18 +2269,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void setPictureNumbers() {
             Pattern pictureNumberPattern = Pattern.compile('Рисунок <(.*?)>')
-            List<XWPFParagraph> foundedParagraphs = findParagraphsByPattern(document, pictureNumberPattern)
-            Map<String, String> numberTemplateBookmarkMap = setNumbers(document, foundedParagraphs, pictureNumberPattern, 'Picture')
+            List<XWPFParagraph> pictureLabelParagraphs = findParagraphsByPattern(document, pictureNumberPattern)
+            Map<String, String> numberTemplateBookmarkMap = setNumbers(document, pictureLabelParagraphs, pictureNumberPattern, 'Picture')
 
-            for (paragraph in foundedParagraphs) {
+            for (paragraph in pictureLabelParagraphs) {
                 removeParagraph(document, paragraph)
             }
 
             for (numberTemplate in numberTemplateBookmarkMap.keySet()) {
-                foundedParagraphs = findParagraphsByText(document, numberTemplate)
-                setRefsToNumber(document, foundedParagraphs, numberTemplate, numberTemplateBookmarkMap.get(numberTemplate))
+                List<XWPFParagraph> pictureNumberParagraphs = findParagraphsByText(document, numberTemplate)
+                setRefsToNumber(document, pictureNumberParagraphs, numberTemplate, numberTemplateBookmarkMap.get(numberTemplate))
 
-                for (paragraph in foundedParagraphs) {
+                for (paragraph in pictureNumberParagraphs) {
                     removeParagraph(document, paragraph)
                 }
             }
@@ -2325,12 +2325,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                         String bookmarkName = "${name}_${number}"
                         CTBookmark bookmark = newParagraph.getCTP().addNewBookmarkStart()
                         bookmark.setName(bookmarkName)
-                        bookmark.setId(BigInteger.valueOf(0)) // ?
+                        bookmark.setId(BigInteger.valueOf(0))
 
                         CTSimpleField ctSimpleField = newParagraph.getCTP().addNewFldSimple()
                         ctSimpleField.setInstr("SEQ ${name} \\* MERGEFORMAT")
 
-                        newParagraph.getCTP().addNewBookmarkEnd().setId(BigInteger.valueOf(0)) // ?
+                        newParagraph.getCTP().addNewBookmarkEnd().setId(BigInteger.valueOf(0))
 
                         String paragraphText = sourceParagraph.getText()
                         Matcher matcher = templatePattern.matcher(paragraphText)
@@ -2385,7 +2385,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                     if (!templateParsed && sourceRunText && sourceRunText.contains('>')) {
                         List<String> templateRunTexts = templateRuns.collect { XWPFRun run -> run.getText(0) }
-                        String templateText = templateRunTexts.join('')
+                        String templateText = String.join('', templateRunTexts)
 
                         if (templateText != numberTemplate) {
                             beforeRun = null
@@ -2430,6 +2430,82 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     }
                 }
             }
+        }
+
+        void setBusinessProcessSectionNumbers() {
+            Pattern pattern = getBusinessProcessSectionPattern()
+            List<XWPFParagraph> businessProcessSectionParagraphs = findParagraphsByPattern(document, pattern)
+
+            XWPFTable table = findTableByHeaders(document, BUSINESS_PROCESS_HIERARCHY_TABLE_HEADERS)
+
+            if (businessProcessSectionParagraphs.size() != table.getRows().size() - 3) {
+                throw new Exception('Количество записей сценариев и процедур в таблице "Место Процесса в иерархии процессов" не соответсвует количеству разделов для данных записей')
+            }
+
+            for (int rowNumber = 1; rowNumber < 3; rowNumber++) {
+                XWPFParagraph numberParagraph = table.getRows().get(rowNumber).getTableCells().get(2).getParagraphs().get(0)
+                XWPFRun targetRun = getOnlyOneParagraphRun(numberParagraph)
+                targetRun.setText('', 0)
+            }
+
+            int rowNumber = 2
+            for (sourceSectionParagraph in businessProcessSectionParagraphs) {
+                rowNumber += 1
+
+                String bookmarkName = createBusinessProcessSectionBookmark(sourceSectionParagraph, rowNumber)
+                removeParagraph(document, sourceSectionParagraph)
+
+                XWPFParagraph numberParagraph = table.getRows().get(rowNumber).getTableCells().get(2).getParagraphs().get(0)
+                XWPFRun targetRun = getOnlyOneParagraphRun(numberParagraph)
+                targetRun.setText('', 0)
+
+                CTSimpleField ctSimpleField = numberParagraph.getCTP().addNewFldSimple()
+                ctSimpleField.setInstr("REF ${bookmarkName} \\r \\h")
+            }
+        }
+
+        private Pattern getBusinessProcessSectionPattern() {
+            List<String> partsPattern = []
+            for (scenario in subprocessDescription.scenarios) {
+                String scenarioCode = scenario.scenario.functionInfo.code ? scenario.scenario.functionInfo.code : "<${SCENARIO_CODE_TEMPLATE_KEY}>"
+                String scenarioName = scenario.scenario.functionInfo.function.name ? scenario.scenario.functionInfo.function.name : "<${SCENARIO_NAME_TEMPLATE_KEY}>"
+                String scenarioPattern = "Сценарий ${scenarioCode} ${scenarioName}"
+                partsPattern.add(scenarioPattern)
+
+                if (detailLevel == 4) {
+                    for (procedure in scenario.procedures) {
+                        String procedureCode = procedure.procedure.functionInfo.code ? procedure.procedure.functionInfo.code : "<${PROCEDURE_CODE_TEMPLATE_KEY}>"
+                        String procedureName = procedure.procedure.functionInfo.function.name ? procedure.procedure.functionInfo.function.name : "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
+                        String procedurePattern = "Процедура ${procedureCode} ${procedureName}"
+                        partsPattern.add(procedurePattern)
+                    }
+                }
+            }
+
+            // noinspection RegExpUnnecessaryNonCapturingGroup
+            Pattern pattern = Pattern.compile("^(?:(?:${String.join(')|(?:', partsPattern)}))\$")
+            return pattern
+        }
+
+        private String createBusinessProcessSectionBookmark(XWPFParagraph sourceSectionParagraph, int rowNumber) {
+            XmlCursor cursor = sourceSectionParagraph.getCTP().newCursor()
+            XWPFParagraph newSectionParagraph = document.insertNewParagraph(cursor)
+            CTPPr pPr = newSectionParagraph.getCTP().isSetPPr() ? newSectionParagraph.getCTP().getPPr() : newSectionParagraph.getCTP().addNewPPr()
+            pPr.set(sourceSectionParagraph.getCTP().getPPr())
+
+            String bookmarkName = "Business_process_${rowNumber}"
+            CTBookmark bookmark = newSectionParagraph.getCTP().addNewBookmarkStart()
+            bookmark.setName(bookmarkName)
+            bookmark.setId(BigInteger.valueOf(0))
+
+            for (sourceRun in sourceSectionParagraph.getRuns()) {
+                XWPFRun targetRun = newSectionParagraph.createRun()
+                copyRun(sourceRun, targetRun)
+            }
+
+            newSectionParagraph.getCTP().addNewBookmarkEnd().setId(BigInteger.valueOf(0))
+
+            return bookmarkName
         }
 
         private void replaceHeadersText(String pattern, String replacement) {
@@ -3199,6 +3275,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         document.fillTables()
         document.fillModels()
         document.setLabelNumbers()
+        document.setBusinessProcessSectionNumbers()
         document.enforceUpdateFields()
         document.saveContent()
         return document
