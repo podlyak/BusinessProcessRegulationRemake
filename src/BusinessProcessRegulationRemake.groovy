@@ -127,6 +127,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     static final String DOC_DATE_PARAM_NAME = 'Дата утверждения регламента'
 
     //------------------------------------------------------------------------------------------------------------------
+    // константы id элементов
+    //------------------------------------------------------------------------------------------------------------------
+    private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
+    private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
+    private static final String FILE_REPOSITORY_ID = 'file-folder-root-id'
+    private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
+
+    //------------------------------------------------------------------------------------------------------------------
     // константы для работы с файлами
     //------------------------------------------------------------------------------------------------------------------
     private static final String DOCX_RESULT_FILE_NAME_FIRST_PART = 'Регламент бизнес-процесса'
@@ -219,7 +227,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String BUSINESS_PROCESS_LEVEL_TEMPLATE_KEY = 'Номер уровня БП'
     private static final String BUSINESS_PROCESS_CODE_TEMPLATE_KEY = 'Код БП'
     private static final String BUSINESS_PROCESS_NAME_TEMPLATE_KEY = 'Наименование БП'
-    private static final String BUSINESS_PROCESS_PARAGRAPH_NUMBER_TEMPLATE_KEY = 'Номер  раздела для БП'
     private static final String EXTERNAL_BUSINESS_PROCESS_CODE_TEMPLATE_KEY = 'Код смежного БП'
     private static final String EXTERNAL_BUSINESS_PROCESS_NAME_TEMPLATE_KEY = 'Смежный БП'
     private static final String EXTERNAL_BUSINESS_PROCESS_INPUT_TEMPLATE_KEY = 'Вход из смежного БП'
@@ -265,11 +272,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     //------------------------------------------------------------------------------------------------------------------
     // константы id элементов
     //------------------------------------------------------------------------------------------------------------------
-    private static final String ABBREVIATIONS_MODEL_ID = '0c25ad70-2733-11e6-05b7-db7cafd96ef7'
-    private static final String ABBREVIATIONS_ROOT_OBJECT_ID = '0f7107e4-2733-11e6-05b7-db7cafd96ef7'
-    private static final String FILE_REPOSITORY_ID = 'file-folder-root-id'
-    private static final String FIRST_LEVEL_MODEL_ID = '1a8132f0-a43b-11e7-05b7-db7cafd96ef7'
-
     private static final String FILE_NODE_TYPE_ID = 'FILE_FOLDER'
 
     private static final String EPC_MODEL_TYPE_ID = 'MT_EEPC'
@@ -399,7 +401,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final boolean DEBUG = true
     private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulationRemake\\examples'
 
-
     //------------------------------------------------------------------------------------------------------------------
     // основной код
     //------------------------------------------------------------------------------------------------------------------
@@ -422,10 +423,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         GROUP,
     }
 
-    private static final Map<String, SubprocessOwnerType> subprocessOwnerTypeMap = Map.of(
-            ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID, SubprocessOwnerType.ORGANIZATIONAL_UNIT,
-            GROUP_OBJECT_TYPE_ID, SubprocessOwnerType.GROUP,
-    )
+    private static final Map<String, SubprocessOwnerType> subprocessOwnerTypeMap
+    static {
+        subprocessOwnerTypeMap = new HashMap<>()
+        subprocessOwnerTypeMap.put(ORGANIZATIONAL_UNIT_OBJECT_TYPE_ID, SubprocessOwnerType.ORGANIZATIONAL_UNIT)
+        subprocessOwnerTypeMap.put(GROUP_OBJECT_TYPE_ID, SubprocessOwnerType.GROUP)
+    }
 
     private class CommonObjectInfo {
         ObjectElement object
@@ -1440,17 +1443,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${DOC_DATE_TEMPLATE_KEY}"
             }
 
-            return Map.of(
-                    PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY, subprocessDescription.subprocess.function.name.toUpperCase(),
-                    PROCESS_CODE_TEMPLATE_KEY, subprocessDescription.subprocess.code,
-                    DOC_VERSION_WITH_DATE_TEMPLATE_KEY, docVersionWithDateTemplateValue,
-                    DOC_YEAR_TEMPLATE_KEY, currentYear,
-                    DOC_VERSION_TEMPLATE_KEY, docVersion,
-                    DOC_DATE_TEMPLATE_KEY, docDate,
-                    PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.subprocess.function.name,
-                    FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.parentProcess.function.name,
-                    PROCESS_REQUIREMENTS_TEMPLATE_KEY, subprocessDescription.subprocess.requirements,
-            )
+            Map<String, String> map = new HashMap<>()
+            map.put(PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY, subprocessDescription.subprocess.function.name.toUpperCase())
+            map.put(PROCESS_CODE_TEMPLATE_KEY, subprocessDescription.subprocess.code)
+            map.put(DOC_VERSION_WITH_DATE_TEMPLATE_KEY, docVersionWithDateTemplateValue)
+            map.put(DOC_YEAR_TEMPLATE_KEY, currentYear)
+            map.put(DOC_VERSION_TEMPLATE_KEY, docVersion)
+            map.put(DOC_DATE_TEMPLATE_KEY, docDate)
+            map.put(PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.subprocess.function.name)
+            map.put(FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.parentProcess.function.name)
+            map.put(PROCESS_REQUIREMENTS_TEMPLATE_KEY, subprocessDescription.subprocess.requirements)
+            return map
         }
 
         void fillLists() {
