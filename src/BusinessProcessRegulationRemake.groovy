@@ -1647,12 +1647,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             int flowCount = flowNames.size()
             flowNames.eachWithIndex { String flowName, int number ->
-                String flowReplacement = flowName
-
-                if (number + 1 < flowCount) {
-                    flowReplacement += ';'
-                }
-
+                String flowReplacement = number + 1 < flowCount ? "${flowName};" : flowName
                 replaceInCopyParagraph(newTableRow.getTableCells().get(flowColumnNumber), flowPattern, flowReplacement)
             }
 
@@ -1703,12 +1698,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                     int positionCount = positions.size()
                     positions.eachWithIndex { String position, int number ->
-                        String positionReplacement = position
-
-                        if (number + 1 < positionCount) {
-                            positionReplacement += ';'
-                        }
-
+                        String positionReplacement = number + 1 < positionCount ? "${position};" : position
                         replaceInCopyParagraph(newTableRow.getTableCells().get(1), positionPattern, positionReplacement)
                     }
 
@@ -1746,12 +1736,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                 int containedDocumentCount = containedDocuments.size()
                 containedDocuments.eachWithIndex { String containedDocument, int number ->
-                    String containedDocumentReplacement = containedDocument
-
-                    if (number + 1 < containedDocumentCount) {
-                        containedDocumentReplacement += ';'
-                    }
-
+                    String containedDocumentReplacement = number + 1 < containedDocumentCount ? "${containedDocument};" : containedDocument
                     replaceInCopyParagraph(newTableRow.getTableCells().get(1), containedDocumentPattern, containedDocumentReplacement)
                 }
 
@@ -2069,12 +2054,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             int inputCount = inputs.size()
             inputs.eachWithIndex { String input, int number ->
-                String inputReplacement = input
-
-                if (number + 1 < inputCount) {
-                    inputReplacement += ';'
-                }
-
+                String inputReplacement = number + 1 < inputCount ? "${input};" : input
                 replaceInCopyParagraph(functionTableCell, inputPattern, inputReplacement)
             }
 
@@ -2093,12 +2073,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             int outputCount = outputs.size()
             outputs.eachWithIndex { String output, int number ->
-                String outputReplacement = output
-
-                if (number + 1 < outputCount) {
-                    outputReplacement += ';'
-                }
-
+                String outputReplacement = number + 1 < outputCount ? "${output};" : output
                 replaceInCopyParagraph(functionTableCell, outputPattern, outputReplacement)
             }
 
@@ -2144,10 +2119,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 performer += " [${performerInfo.action}]"
                 performers.add(performer)
             }
-
             performers = performers.sort()
-            for (performer in performers) {
-                String performerReplacement = "${performer};"
+
+            int performerCount = performers.size()
+            performers.eachWithIndex { String performer, int number ->
+                String performerReplacement = number + 1 < performerCount ? "${performer};" : performer
                 replaceInCopyParagraph(functionTableCell, performerPattern, performerReplacement)
             }
 
@@ -2163,19 +2139,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             List<String> childFunctions = []
             for (childEPCFunction in function.childEPCFunctions) {
-                String childFunction = ''
-                childFunction += "Переход к п. ${childEPCFunction.number.toString()}"
+                String childFunction = "Переход к п. ${childEPCFunction.number.toString()}"
                 childFunctions.add(childFunction)
             }
 
             for (childExternalFunction in function.childExternalFunctions) {
-                String childFunction = ''
-                childFunction += "Переход к процессу «${childExternalFunction.function.name}»"
+                String childFunction = "Переход к процессу «${childExternalFunction.function.name}»"
                 childFunctions.add(childFunction)
             }
 
-            for (childFunction in childFunctions) {
-                String childFunctionReplacement = "${childFunction};"
+            int childFunctionCount = childFunctions.size()
+            childFunctions.eachWithIndex { String childFunction, int number ->
+                String childFunctionReplacement = number + 1 < childFunctionCount ? "${childFunction};" : childFunction
                 replaceInCopyParagraph(functionTableCell, childFunctionPattern, childFunctionReplacement)
             }
 
@@ -2195,10 +2170,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 informationSystem += informationSystemInfo.name ? informationSystemInfo.name : informationSystemPattern
                 informationSystems.add(informationSystem)
             }
-
             informationSystems = informationSystems.sort()
-            for (informationSystem in informationSystems) {
-                String informationSystemReplacement = "${informationSystem};"
+
+            int informationSystemCount = informationSystems.size()
+            informationSystems.eachWithIndex { String informationSystem, int number ->
+                String informationSystemReplacement = number + 1 < informationSystemCount ? "${informationSystem};" : informationSystem
                 replaceInCopyParagraph(functionTableCell, informationSystemPattern, informationSystemReplacement)
             }
 
