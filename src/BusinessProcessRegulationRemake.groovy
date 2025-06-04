@@ -381,7 +381,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
 
     // TODO: [critical] определиться со списком исключаемых символов (интерфейсы, группировка интерфейсов и т.д.)
-    private static final  List<String> EXCLUDED_FUNCTION_SYMBOL_IDS = [
+    private static final List<String> EXCLUDED_FUNCTION_SYMBOL_IDS = [
             '07b15070-9b4e-4919-8ed0-9bae8764c7fa', // TODO: удалить? (интерфейс, созданный через редактор и генератор)
             '53a01270-95da-11ea-05b7-db7cafd96ef7', // TODO: удалить? (интерфейс СБП)
             '75f2e570-bdd3-11e5-05b7-db7cafd96ef7', // интерфейс смежного процесса
@@ -434,14 +434,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         ObjectElement object
         String name
 
-        CommonObjectInfo(ObjectElement object) {
+        CommonObjectInfo(ObjectElement object, boolean onlyShortName = false) {
             this.object = object
-            this.name = getName(object.getObjectDefinition())
+            this.name = getName(object.getObjectDefinition(), onlyShortName)
         }
 
-        CommonObjectInfo(Model model) {
+        CommonObjectInfo(Model model, boolean onlyShortName = false) {
             this.object = null
-            this.name = getName(model)
+            this.name = getName(model, onlyShortName)
         }
     }
 
@@ -615,7 +615,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.model = model
         }
 
-        void findContainedDocuments () {
+        void findContainedDocuments() {
             ObjectElement collectionObjectOnModel = model.findObjectInstances(collection.document.object.getObjectDefinition())
                     .stream()
                     .findFirst()
@@ -855,8 +855,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     }
 
                     processDescription.flows.add(flow)
-                }
-                else {
+                } else {
                     completedExternalProcessesWithFlows.add(new ExternalProcessDescription(process, [flow]))
                 }
             }
@@ -1043,7 +1042,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         void buildResponsibilityMatrix() {
             for (procedure in procedures) {
                 String procedureName = procedure.procedure.functionInfo.function.name
-                List<String> procedureBusinessRoleNames = procedure.businessRoles.collect {BusinessRoleInfo businessRole -> businessRole.businessRole.name}
+                List<String> procedureBusinessRoleNames = procedure.businessRoles.collect { BusinessRoleInfo businessRole -> businessRole.businessRole.name }
                 responsibilityMatrix.put(procedureName, procedureBusinessRoleNames)
             }
         }
@@ -1082,14 +1081,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.model = model
         }
 
-        void findNormativeDocuments () {
+        void findNormativeDocuments() {
             List<ObjectElement> normativeDocumentObjects = model.getObjects()
                     .findAll { ObjectElement oE -> oE.getSymbolId() == NORMATIVE_DOCUMENT_SYMBOL_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
             normativeDocuments = normativeDocumentObjects.collect { ObjectElement normativeDocumentObject -> new NormativeDocumentInfo(normativeDocumentObject) }
         }
 
-        void findDocumentCollections () {
+        void findDocumentCollections() {
             List<ObjectElement> documentObjects = model.getObjects()
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
@@ -1106,8 +1105,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         static Model findDocumentCollectionModel(ObjectElement documentCollectionObject) {
-            List <Model> documentCollectionObjectModels = documentCollectionObject.getDecompositions()
-                    .findAll { TreeNode tN -> tN.isModel() } as List <Model>
+            List<Model> documentCollectionObjectModels = documentCollectionObject.getDecompositions()
+                    .findAll { TreeNode tN -> tN.isModel() } as List<Model>
             return documentCollectionObjectModels
                     .findAll { Model m -> m.getModelTypeId() in DOCUMENT_COLLECTION_MODEL_TYPE_IDS }
                     .stream()
@@ -1265,7 +1264,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == APPLICATION_SYSTEM_TYPE_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
-            informationSystems = informationSystemObjects.collect { ObjectElement informationSystemObject -> new CommonObjectInfo(informationSystemObject) }
+            informationSystems = informationSystemObjects.collect { ObjectElement informationSystemObject -> new CommonObjectInfo(informationSystemObject, true) }
         }
 
         void findChildFunctions(List<EPCFunctionDescription> epcFunctions) {
@@ -1286,8 +1285,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             childFunctionObjects.each { ObjectElement childFunctionObject ->
                 if (childFunctionObject.getSymbolId() in EXCLUDED_FUNCTION_SYMBOL_IDS) {
                     childExternalFunctions.add(new CommonFunctionInfo(childFunctionObject))
-                }
-                else {
+                } else {
                     EPCFunctionDescription childEPCFunction = epcFunctions
                             .find { EPCFunctionDescription epcFunction -> epcFunction.function.function.object.getId() == childFunctionObject.getId() }
                     childEPCFunctions.add(childEPCFunction)
@@ -1295,7 +1293,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private List<ObjectElement> findOutputEventObjects (ObjectElement functionObject) {
+        private List<ObjectElement> findOutputEventObjects(ObjectElement functionObject) {
             List<ObjectElement> eventObjects = functionObject.getExitEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_EVENT_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getTarget() as ObjectElement }
@@ -1432,14 +1430,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             String docVersionWithDateTemplateValue
             if (docVersion && docDate) {
                 docVersionWithDateTemplateValue = "${docVersion} от ${docDate}"
-            }
-            else if (docVersion && !docDate) {
+            } else if (docVersion && !docDate) {
                 docVersionWithDateTemplateValue = "${docVersion} от ${DOC_DATE_TEMPLATE_KEY}"
-            }
-            else if (!docVersion && docDate) {
+            } else if (!docVersion && docDate) {
                 docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${docDate}"
-            }
-            else {
+            } else {
                 docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${DOC_DATE_TEMPLATE_KEY}"
             }
 
@@ -1478,7 +1473,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
 
                 replacement += ' '
-                replacement += owner.owner.name ? "«${owner.owner.name}»" : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
+                replacement += owner.owner.name ? "(${owner.owner.name})" : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
 
                 if (pattern == replacement) {
                     continue
@@ -1511,7 +1506,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             String pattern = "<${PROCESS_OWNER_TEMPLATE_KEY}>"
             String placeholderCopy = ", ${pattern}"
             for (owner in subprocessDescription.owners) {
-                String replacement = owner.owner.name ? "«${owner.owner.name}»" : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
+                String replacement = owner.owner.name ? owner.owner.name : "<${PROCESS_OWNER_TEMPLATE_KEY}>"
 
                 if (pattern == replacement) {
                     continue
@@ -1531,7 +1526,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             int counter = 0
             boolean replacementWas = false
             for (goal in subprocessDescription.goals) {
-                counter+=1
+                counter += 1
                 String replacement = goal.name ? goal.name : pattern
 
                 if (counter == goalsCount) {
@@ -1575,9 +1570,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 replaceParagraphText(newTableRow.getTableCells().get(1).getParagraphs().get(0), valuePattern, valueReplacement)
             }
 
-            if (foundedAbbreviations) {
-                table.removeRow(1)
-            }
+            table.removeRow(1)
         }
 
         private void fillBusinessProcessHierarchy() {
@@ -1634,11 +1627,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 fillExternalBusinessProcess(table, externalProcessDescription, EXTERNAL_BUSINESS_PROCESS_OUTPUT_TEMPLATE_KEY, 2)
             }
 
-            table.removeRow(1)
+            table.removeRow(2)
             table.removeRow(1)
         }
 
-        // TODO: убрать ; в последней записи
         private void fillExternalBusinessProcess(XWPFTable table, SubprocessDescription.ExternalProcessDescription externalProcessDescription, String flowTemplateKey, int flowColumnNumber) {
             String namePattern = "<${EXTERNAL_BUSINESS_PROCESS_CODE_TEMPLATE_KEY}> <${EXTERNAL_BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
             String flowPattern = "<${flowTemplateKey}>"
@@ -1652,8 +1644,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             List<String> flowNames = externalProcessDescription.flows.collect { CommonObjectInfo flow -> flow.name ? flow.name : "<${flowTemplateKey}>" }
             flowNames = flowNames.sort()
-            for (flowName in flowNames) {
-                String flowReplacement = "${flowName};"
+
+            int flowCount = flowNames.size()
+            flowNames.eachWithIndex { String flowName, int number ->
+                String flowReplacement = flowName
+
+                if (number + 1 < flowCount) {
+                    flowReplacement += ';'
+                }
+
                 replaceInCopyParagraph(newTableRow.getTableCells().get(flowColumnNumber), flowPattern, flowReplacement)
             }
 
@@ -1702,26 +1701,28 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     }
                     positions = positions.sort()
 
-                    for (position in positions) {
-                        String positionReplacement = "${position};"
+                    int positionCount = positions.size()
+                    positions.eachWithIndex { String position, int number ->
+                        String positionReplacement = position
+
+                        if (number + 1 < positionCount) {
+                            positionReplacement += ';'
+                        }
+
                         replaceInCopyParagraph(newTableRow.getTableCells().get(1), positionPattern, positionReplacement)
                     }
 
                     if (positions) {
                         newTableRow.getTableCells().get(1).removeParagraph(newTableRow.getTableCells().get(1).getParagraphs().size() - 1)
-                    }
-                    else {
+                    } else {
                         addParagraphText(newTableRow.getTableCells().get(1).getParagraphArray(0), '')
                     }
                 }
 
-                if (subprocessDescription.completedBusinessRoles) {
-                    table.removeRow(1)
-                }
+                table.removeRow(1)
             }
         }
 
-        // TODO: убрать ; в последней записи
         private void fillDocumentCollections() {
             XWPFTable table = findTableByHeaders(document, DOCUMENT_COLLECTION_TABLE_HEADERS)
 
@@ -1740,24 +1741,28 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 XWPFTableRow newTableRow = copyTableRow(table.getRows().get(1), table)
                 replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), documentCollectionPattern, documentCollectionReplacement)
 
-                List<String> containedDocuments = documentCollectionInfo.containedDocuments.collect { DocumentInfo containedDocument -> (containedDocument.document.name ? containedDocument.document.name : containedDocumentPattern) + " [${containedDocument.type}]"}
+                List<String> containedDocuments = documentCollectionInfo.containedDocuments.collect { DocumentInfo containedDocument -> (containedDocument.document.name ? containedDocument.document.name : containedDocumentPattern) + " [${containedDocument.type}]" }
                 containedDocuments = containedDocuments.sort()
-                for (containedDocument in containedDocuments) {
-                    String containedDocumentReplacement = "${containedDocument};"
+
+                int containedDocumentCount = containedDocuments.size()
+                containedDocuments.eachWithIndex { String containedDocument, int number ->
+                    String containedDocumentReplacement = containedDocument
+
+                    if (number + 1 < containedDocumentCount) {
+                        containedDocumentReplacement += ';'
+                    }
+
                     replaceInCopyParagraph(newTableRow.getTableCells().get(1), containedDocumentPattern, containedDocumentReplacement)
                 }
 
                 if (containedDocuments) {
                     newTableRow.getTableCells().get(1).removeParagraph(newTableRow.getTableCells().get(1).getParagraphs().size() - 1)
-                }
-                else {
+                } else {
                     addParagraphText(newTableRow.getTableCells().get(1).getParagraphArray(0), '')
                 }
             }
 
-            if (subprocessDescription.completedDocumentCollections) {
-                table.removeRow(1)
-            }
+            table.removeRow(1)
         }
 
         void fillModels() {
@@ -1791,8 +1796,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 byte[] image = subprocessDescription.processSelectionModel.getImagePng()
                 XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
                 addPicture(imageParagraph, image, labelParagraph)
-            }
-            else {
+            } else {
                 document.removeBodyElement(imageParagraphPosition + 1)
                 document.removeBodyElement(imageParagraphPosition)
                 document.removeBodyElement(imageParagraphPosition - 1)
@@ -1804,8 +1808,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             if (detailLevel == 3) {
                 List<IBodyElement> elementsToDelete = findBodyElements(document, RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND)
                 removeBodyElements(document, elementsToDelete)
-            }
-            else if (detailLevel == 4) {
+            } else if (detailLevel == 4) {
                 List<IBodyElement> elementsToDelete = findBodyElements(document, SCENARIO_FUNCTIONS_TABLE_PARAGRAPH_TEXT_TO_FIND, RESPONSIBILITY_MATRIX_PARAGRAPH_TEXT_TO_FIND)
                 removeBodyElements(document, elementsToDelete)
             }
@@ -1827,14 +1830,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                         fillProcedure(procedureDescription, procedureNumber, procedureElements)
 
-                        procedureNumber+=1
+                        procedureNumber += 1
                     }
 
                     List<IBodyElement> elementsToDelete = findBodyElements(document, PROCEDURE_PARAGRAPH_TEXT_TO_FIND, SCENARIO_PARAGRAPH_TEXT_TO_FIND, 1)
                     removeBodyElements(document, elementsToDelete)
                 }
 
-                scenarioNumber+=1
+                scenarioNumber += 1
             }
 
             List<IBodyElement> elementsToDelete = findBodyElements(document, SCENARIO_PARAGRAPH_TEXT_TO_FIND, DOCUMENT_COLLECTION_PARAGRAPH_TEXT_TO_FIND, 1)
@@ -1904,10 +1907,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                 fillFunctionsTable(table, functions)
 
-                if (functions) {
-                    table.removeRow(2)
-                    table.removeRow(1)
-                }
+                table.removeRow(2)
+                table.removeRow(1)
             }
 
             if (detailLevel == 4) {
@@ -1919,9 +1920,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                 fillResponsibilityMatrix(table, description)
 
-                if (description.procedures) {
-                    table.removeRow(1)
-                }
+                table.removeRow(1)
             }
         }
 
@@ -1958,15 +1957,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 replaceParagraphText(newProcedureRow.getTableCells().get(0).getParagraphs().get(0), procedurePattern, procedureReplacement)
 
                 List<String> procedureBusinessRoles = procedure.businessRoles.collect { BusinessRoleInfo businessRole -> (businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern) }
-                int cellNumber = 1
-                for (businessRole in businessRoles) {
+                businessRoles.eachWithIndex { BusinessRoleInfo businessRole, int number ->
                     String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
 
                     if (!(businessRoleReplacement in procedureBusinessRoles)) {
-                        addParagraphText(newProcedureRow.getTableCells().get(cellNumber).getParagraphs().get(0), '')
+                        addParagraphText(newProcedureRow.getTableCells().get(number + 1).getParagraphs().get(0), '')
                     }
-
-                    cellNumber+=1
                 }
             }
         }
@@ -2030,10 +2026,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             fillFunctionsTable(table, functions)
 
-            if (functions) {
-                table.removeRow(2)
-                table.removeRow(1)
-            }
+            table.removeRow(2)
+            table.removeRow(1)
         }
 
         private static void fillFunctionsTable(XWPFTable table, List<EPCFunctionDescription> functions) {
@@ -2067,40 +2061,50 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        // TODO: убрать ; в последней записи
         private static void fillFunctionInputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String inputPattern = "<${INPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
 
             List<String> inputs = getInputsOutputs(function.inputDocuments, function.inputEvents, inputPattern)
             inputs = inputs.sort()
-            for (input in inputs) {
-                String inputReplacement = "${input};"
+
+            int inputCount = inputs.size()
+            inputs.eachWithIndex { String input, int number ->
+                String inputReplacement = input
+
+                if (number + 1 < inputCount) {
+                    inputReplacement += ';'
+                }
+
                 replaceInCopyParagraph(functionTableCell, inputPattern, inputReplacement)
             }
 
             if (inputs) {
                 functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            }
-            else {
+            } else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
             }
         }
 
-        // TODO: убрать ; в последней записи
         private static void fillFunctionOutputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String outputPattern = "<${OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
 
             List<String> outputs = getInputsOutputs(function.outputDocuments, function.outputEvents, outputPattern)
             outputs = outputs.sort()
-            for (output in outputs) {
-                String outputReplacement = "${output};"
+
+            int outputCount = outputs.size()
+            outputs.eachWithIndex { String output, int number ->
+                String outputReplacement = output
+
+                if (number + 1 < outputCount) {
+                    outputReplacement += ';'
+                }
+
                 replaceInCopyParagraph(functionTableCell, outputPattern, outputReplacement)
             }
 
             if (outputs) {
                 functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            }
-            else {
+            } else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
             }
         }
@@ -2149,8 +2153,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             if (performers) {
                 functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            }
-            else {
+            } else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
             }
         }
@@ -2178,8 +2181,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             if (childFunctions) {
                 functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            }
-            else {
+            } else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
             }
         }
@@ -2202,8 +2204,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             if (informationSystems) {
                 functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            }
-            else {
+            } else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
             }
         }
@@ -2575,9 +2576,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                         if (escapeCount == 0) {
                             elements.add(bodyElement)
                             continue
-                        }
-                        else {
-                            escapeCount-=1
+                        } else {
+                            escapeCount -= 1
                         }
                     }
                 }
@@ -3029,12 +3029,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
     }
 
-    private static String getName(TreeNode treeNode) {
+    private static String getName(TreeNode treeNode, boolean onlyShortName = false) {
         Node node = treeNode._getNode()
         String name = node.getName()
         name = name ? trimStringValue(name) : ''
         if (name) {
             findAbbreviations(name)
+        }
+
+        if (onlyShortName) {
+            return name
         }
 
         String fullName = getAttributeValue(treeNode, FULL_NAME_ATTR_ID)
@@ -3159,8 +3163,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         String docVersionParam = ParamUtils.parse(context.findParameter(DOC_VERSION_PARAM_NAME)) as String
         if (docVersionParam) {
             docVersion = docVersionParam
-        }
-        else {
+        } else {
             docVersion = ''
         }
 
@@ -3168,8 +3171,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         if (docDateParam) {
             Timestamp approvalDate = ParamUtils.parse(context.findParameter(DOC_DATE_PARAM_NAME)) as Timestamp
             docDate = approvalDate.format('dd.MM.yyyy')
-        }
-        else {
+        } else {
             docDate = ''
         }
     }
@@ -3221,7 +3223,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private List<ObjectElement> getSubprocessObjects() {
         List<ObjectElement> subprocessObjects = []
-        if (!context.elementsIdsList().isEmpty()){
+        if (!context.elementsIdsList().isEmpty()) {
             Model model = treeRepository.read(context.modelId().getRepositoryId(), context.modelId().getId())
             List<ObjectElement> allObjects = model.getObjects()
             for (elementId in context.elementsIdsList()) {
@@ -3241,7 +3243,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private List<SubprocessDescription> getSubProcessDescriptions(List<ObjectElement> subprocessObjects) {
-        List<SubprocessDescription> subprocessDescriptions = subprocessObjects.collect{ ObjectElement subprocessObject -> new SubprocessDescription(subprocessObject, detailLevel) }
+        List<SubprocessDescription> subprocessDescriptions = subprocessObjects.collect { ObjectElement subprocessObject -> new SubprocessDescription(subprocessObject, detailLevel) }
         subprocessDescriptions.each { SubprocessDescription subprocessDescription -> buildSubProcessDescription(subprocessDescription) }
         return subprocessDescriptions
     }
