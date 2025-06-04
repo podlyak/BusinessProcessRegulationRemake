@@ -7,6 +7,7 @@ import org.apache.poi.xwpf.usermodel.ParagraphAlignment
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns
 import org.apache.poi.xwpf.usermodel.XWPFAbstractNum
 import org.apache.poi.xwpf.usermodel.XWPFDocument
+import org.apache.poi.xwpf.usermodel.XWPFHyperlinkRun
 import org.apache.poi.xwpf.usermodel.XWPFNum
 import org.apache.poi.xwpf.usermodel.XWPFNumbering
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
@@ -19,6 +20,7 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTAbstractNum
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBookmark
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTDecimalNumber
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTHyperlink
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTLvl
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTNumLvl
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
@@ -1519,6 +1521,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(placeholderCopy, '')
         }
 
+        // TODO: убрать ; из шаблона, сделать кодом
         private void fillProcessGoals() {
             String pattern = "<${PROCESS_GOAL_TEMPLATE_KEY}>"
             int goalsCount = subprocessDescription.goals.size()
@@ -2501,6 +2504,130 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return bookmarkName
         }
 
+        void setDocumentCollectionHyperlinks() {
+            XWPFTable table = findTableByHeaders(document, DOCUMENT_COLLECTION_TABLE_HEADERS)
+
+            if (table.getRows().size() == 1) {
+                return
+            }
+
+            for (int rowNumber = 1; rowNumber < table.getRows().size(); rowNumber++) {
+                XWPFParagraph paragraph = table.getRow(rowNumber).getTableCells().get(0).getParagraphs().get(0)
+                String paragraphText = paragraph.getText()
+
+                if (paragraphText.contains("<${PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY}>")) {
+                    continue
+                }
+
+                String bookmarkName = createDocumentCollectionBookmark(paragraph, rowNumber)
+
+                setHyperlinksInDocumentCollectionTable(table, paragraphText, bookmarkName)
+
+                List<XWPFTable> functionsTables = []
+                for (currentTable in document.getTables()) {
+                    if (tableHasHeaders(currentTable, FUNCTIONS_TABLE_HEADERS)) {
+                        functionsTables.add(currentTable)
+                    }
+                }
+                setHyperlinksInFunctionsTables(functionsTables, paragraphText, bookmarkName)
+            }
+        }
+
+        private static String createDocumentCollectionBookmark(XWPFParagraph paragraph, int rowNumber) {
+            String paragraphText = paragraph.getText()
+            int delimiterSymbolIndex = paragraphText.indexOf('[') - 1
+            String documentCollectionName = paragraphText.substring(0, delimiterSymbolIndex)
+            String documentCollectionInfo = paragraphText.substring(delimiterSymbolIndex)
+
+            XWPFRun sourceRun = getOnlyOneParagraphRun(paragraph)
+            sourceRun.setText('', 0)
+
+            String bookmarkName = "Document_collection_${rowNumber}"
+            CTBookmark bookmark = paragraph.getCTP().addNewBookmarkStart()
+            bookmark.setName(bookmarkName)
+            bookmark.setId(BigInteger.valueOf(0))
+
+            XWPFRun targetRun = paragraph.createRun()
+            copyRun(sourceRun, targetRun)
+            targetRun.setText(documentCollectionName, 0)
+
+            paragraph.getCTP().addNewBookmarkEnd().setId(BigInteger.valueOf(0))
+
+            targetRun = paragraph.createRun()
+            copyRun(sourceRun, targetRun)
+            targetRun.setText(documentCollectionInfo, 0)
+
+            return bookmarkName
+        }
+
+        private static void setHyperlinksInDocumentCollectionTable(XWPFTable table, String documentCollection, String bookmarkName) {
+            if (table.getRows().size() == 1) {
+                return
+            }
+
+            for (int rowNumber = 1; rowNumber < table.getRows().size(); rowNumber++) {
+                for (paragraph in table.getRow(rowNumber).getTableCells().get(1).getParagraphs()) {
+                    if (!(paragraph.getText().contains(documentCollection))) {
+                        continue
+                    }
+
+                    setHyperlinkToDocumentCollection(paragraph, bookmarkName)
+                }
+            }
+        }
+
+        private static void setHyperlinksInFunctionsTables(List<XWPFTable> tables, String documentCollection, String bookmarkName) {
+            for (table in tables) {
+                if (table.getRows().size() == 1) {
+                    continue
+                }
+
+                for (int rowNumber = 1; rowNumber < table.getRows().size(); rowNumber++) {
+                    if (rowNumber % 2 == 0) {
+                        continue
+                    }
+
+                    List<XWPFTableCell> cells = [
+                            table.getRow(rowNumber).getTableCells().get(1),
+                            table.getRow(rowNumber).getTableCells().get(3),
+                    ]
+
+                    for (cell in cells) {
+                        for (paragraph in cell.getParagraphs()) {
+                            if (!(paragraph.getText().contains(documentCollection))) {
+                                continue
+                            }
+
+                            setHyperlinkToDocumentCollection(paragraph, bookmarkName)
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void setHyperlinkToDocumentCollection(XWPFParagraph paragraph, String bookmarkName) {
+            String paragraphText = paragraph.getText()
+            int delimiterSymbolIndex = paragraphText.indexOf('[') - 1
+            String documentCollectionName = paragraphText.substring(0, delimiterSymbolIndex)
+            String documentCollectionInfo = paragraphText.substring(delimiterSymbolIndex)
+
+            XWPFRun sourceRun = getOnlyOneParagraphRun(paragraph)
+            sourceRun.setText('', 0)
+
+            CTHyperlink hyperlink = paragraph.getCTP().addNewHyperlink()
+            hyperlink.setAnchor(bookmarkName)
+            hyperlink.addNewR()
+
+            XWPFHyperlinkRun hyperlinkRun = new XWPFHyperlinkRun(hyperlink, hyperlink.getRArray(0), paragraph)
+            hyperlinkRun.setText(documentCollectionName)
+            hyperlinkRun.setColor('0000FF')
+            hyperlinkRun.setUnderline(UnderlinePatterns.SINGLE)
+
+            XWPFRun targetRun = paragraph.createRun()
+            copyRun(sourceRun, targetRun)
+            targetRun.setText(documentCollectionInfo, 0)
+        }
+
         private void replaceHeadersText(String pattern, String replacement) {
             for (header in document.getHeaderList()) {
                 for (headerParagraph in header.getParagraphs()) {
@@ -3276,6 +3403,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         document.fillModels()
         document.setLabelNumbers()
         document.setBusinessProcessSectionNumbers()
+        document.setDocumentCollectionHyperlinks()
         document.enforceUpdateFields()
         document.saveContent()
         return document
