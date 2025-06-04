@@ -145,6 +145,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
+    // константы для отладки при разработке
+    //------------------------------------------------------------------------------------------------------------------
+    private static final boolean DEBUG = true
+    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulationRemake\\examples'
+
+    //------------------------------------------------------------------------------------------------------------------
     // константы шаблона для простого текста
     //------------------------------------------------------------------------------------------------------------------
     private static final String PROCESS_NAME_UPPER_CASE_TEMPLATE_KEY = 'НАЗВАНИЕ ПРОЦЕССА'
@@ -394,12 +400,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     // TODO: уточнить по другим типам символа сценария
     private static final String SCENARIO_SYMBOL_ID = 'ST_SCENARIO'
     private static final String STATUS_SYMBOL_ID = 'd6e8a7b0-7ce6-11e2-3463-e4115bf4fdb9'
-
-    //------------------------------------------------------------------------------------------------------------------
-    // константы для отладки при разработке
-    //------------------------------------------------------------------------------------------------------------------
-    private static final boolean DEBUG = true
-    private static final String TEMPLATE_LOCAL_PATH = 'C:\\Users\\vikto\\IdeaProjects\\BusinessProcessRegulationRemake\\examples'
 
     //------------------------------------------------------------------------------------------------------------------
     // основной код
