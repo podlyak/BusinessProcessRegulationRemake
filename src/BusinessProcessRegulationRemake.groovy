@@ -1653,9 +1653,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<String> flowNames = externalProcessDescription.flows.collect { CommonObjectInfo flow -> flow.name ? flow.name : "<${flowTemplateKey}>" }
             flowNames = flowNames.sort()
 
-            int flowCount = flowNames.size()
+            int flowsCount = flowNames.size()
             flowNames.eachWithIndex { String flowName, int number ->
-                String flowReplacement = number + 1 < flowCount ? "${flowName};" : flowName
+                String flowReplacement = number + 1 < flowsCount ? "${flowName};" : flowName
                 replaceInCopyParagraph(newTableRow.getTableCells().get(flowColumnNumber), flowPattern, flowReplacement)
             }
 
@@ -1711,9 +1711,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     }
                     positions = positions.sort()
 
-                    int positionCount = positions.size()
+                    int positionsCount = positions.size()
                     positions.eachWithIndex { String position, int number ->
-                        String positionReplacement = number + 1 < positionCount ? "${position};" : position
+                        String positionReplacement = number + 1 < positionsCount ? "${position};" : position
                         replaceInCopyParagraph(newTableRow.getTableCells().get(1), positionPattern, positionReplacement)
                     }
 
@@ -1749,9 +1749,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 List<String> containedDocuments = documentCollectionInfo.containedDocuments.collect { DocumentInfo containedDocument -> (containedDocument.document.name ? containedDocument.document.name : containedDocumentPattern) + " [${containedDocument.type}]" }
                 containedDocuments = containedDocuments.sort()
 
-                int containedDocumentCount = containedDocuments.size()
+                int containedDocumentsCount = containedDocuments.size()
                 containedDocuments.eachWithIndex { String containedDocument, int number ->
-                    String containedDocumentReplacement = number + 1 < containedDocumentCount ? "${containedDocument};" : containedDocument
+                    String containedDocumentReplacement = number + 1 < containedDocumentsCount ? "${containedDocument};" : containedDocument
                     replaceInCopyParagraph(newTableRow.getTableCells().get(1), containedDocumentPattern, containedDocumentReplacement)
                 }
 
@@ -2067,9 +2067,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<String> inputs = getInputsOutputs(function.inputDocuments, function.inputEvents, inputPattern)
             inputs = inputs.sort()
 
-            int inputCount = inputs.size()
+            int inputsCount = inputs.size()
             inputs.eachWithIndex { String input, int number ->
-                String inputReplacement = number + 1 < inputCount ? "${input};" : input
+                String inputReplacement = number + 1 < inputsCount ? "${input};" : input
                 replaceInCopyParagraph(functionTableCell, inputPattern, inputReplacement)
             }
 
@@ -2086,9 +2086,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<String> outputs = getInputsOutputs(function.outputDocuments, function.outputEvents, outputPattern)
             outputs = outputs.sort()
 
-            int outputCount = outputs.size()
+            int outputsCount = outputs.size()
             outputs.eachWithIndex { String output, int number ->
-                String outputReplacement = number + 1 < outputCount ? "${output};" : output
+                String outputReplacement = number + 1 < outputsCount ? "${output};" : output
                 replaceInCopyParagraph(functionTableCell, outputPattern, outputReplacement)
             }
 
@@ -2136,9 +2136,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
             performers = performers.sort()
 
-            int performerCount = performers.size()
+            int performersCount = performers.size()
             performers.eachWithIndex { String performer, int number ->
-                String performerReplacement = number + 1 < performerCount ? "${performer};" : performer
+                String performerReplacement = number + 1 < performersCount ? "${performer};" : performer
                 replaceInCopyParagraph(functionTableCell, performerPattern, performerReplacement)
             }
 
@@ -2163,9 +2163,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 childFunctions.add(childFunction)
             }
 
-            int childFunctionCount = childFunctions.size()
+            int childFunctionsCount = childFunctions.size()
             childFunctions.eachWithIndex { String childFunction, int number ->
-                String childFunctionReplacement = number + 1 < childFunctionCount ? "${childFunction};" : childFunction
+                String childFunctionReplacement = number + 1 < childFunctionsCount ? "${childFunction};" : childFunction
                 replaceInCopyParagraph(functionTableCell, childFunctionPattern, childFunctionReplacement)
             }
 
@@ -2187,9 +2187,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
             informationSystems = informationSystems.sort()
 
-            int informationSystemCount = informationSystems.size()
+            int informationSystemsCount = informationSystems.size()
             informationSystems.eachWithIndex { String informationSystem, int number ->
-                String informationSystemReplacement = number + 1 < informationSystemCount ? "${informationSystem};" : informationSystem
+                String informationSystemReplacement = number + 1 < informationSystemsCount ? "${informationSystem};" : informationSystem
                 replaceInCopyParagraph(functionTableCell, informationSystemPattern, informationSystemReplacement)
             }
 
@@ -2811,16 +2811,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                         // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
                         // после данного параграфа автоматически ставится разрыв раздела
                         setPageOrientation(labelParagraph, STPageOrientation.LANDSCAPE)
-                        int labelStringCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
+                        int labelStringsCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
                         pageW = longSide
-                        pageH = shortSide - labelStringCount * labelStringHeight
+                        pageH = shortSide - labelStringsCount * labelStringHeight
                     } else {
                         // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
                         // после данного параграфа автоматически ставится разрыв раздела
                         setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
-                        int labelStringCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
+                        int labelStringsCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
                         pageW = shortSide
-                        pageH = longSide - labelStringCount * labelStringHeight
+                        pageH = longSide - labelStringsCount * labelStringHeight
                     }
 
                     // Если изображение не помещается на страницу, то надо его масштабировать
