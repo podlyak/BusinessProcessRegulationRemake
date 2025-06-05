@@ -415,9 +415,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     CustomScriptContext context
     private TreeRepository treeRepository
 
-    private static int detailLevel = 3
-    private static String docVersion = ''
-    private static String docDate = ''
+    private static int detailLevel
+    private static String docVersion
+    private static String docDate
     private static String currentYear = LocalDate.now().getYear().toString()
 
     enum SubprocessOwnerType {
@@ -1521,27 +1521,22 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(placeholderCopy, '')
         }
 
-        // TODO: убрать ; из шаблона, сделать кодом
         private void fillProcessGoals() {
             String pattern = "<${PROCESS_GOAL_TEMPLATE_KEY}>"
+
+            boolean haveNotEmptyGoal = true
             int goalsCount = subprocessDescription.goals.size()
-
-            int counter = 0
-            boolean replacementWas = false
-            for (goal in subprocessDescription.goals) {
-                counter += 1
-                String replacement = goal.name ? goal.name : pattern
-
-                if (counter == goalsCount) {
-                    pattern += ';'
-                    replacement += '.'
+            subprocessDescription.goals.eachWithIndex { CommonObjectInfo goal, int number ->
+                if (goal.name) {
+                    haveNotEmptyGoal = true
                 }
 
-                boolean replacementFlag = replaceInCopyParagraph(document, pattern, replacement)
-                replacementWas = replacementFlag ? replacementFlag : replacementWas
+                String goalName = goal.name ? goal.name : pattern
+                String replacement = number + 1 < goalsCount ? "${goalName};" : "${goalName}."
+                replaceInCopyParagraph(document, pattern, replacement)
             }
 
-            if (replacementWas) {
+            if (haveNotEmptyGoal) {
                 removeParagraphByText(document, pattern)
             }
         }
@@ -2636,9 +2631,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static boolean replaceInCopyParagraph(IBody body, String pattern, String replacement) {
+        private static void replaceInCopyParagraph(IBody body, String pattern, String replacement) {
             if (pattern == replacement) {
-                return false
+                return
             }
 
             List<XWPFParagraph> paragraphs = findParagraphsByText(body, pattern)
@@ -2646,7 +2641,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 XWPFParagraph newParagraph = addParagraph(body, paragraph)
                 replaceParagraphText(newParagraph, pattern, replacement)
             }
-            return true
         }
 
         private void replaceParagraphsText(String pattern, String replacement) {
