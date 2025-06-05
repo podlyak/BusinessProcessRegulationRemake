@@ -945,6 +945,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             analyzedEPC.each { EPCDescription epcDescription ->
                 completedNormativeDocuments.addAll(epcDescription.normativeDocuments)
             }
+
+            for (documentCollection in completedDocumentCollections) {
+                for (containedDocument in documentCollection.containedDocuments) {
+                    if (containedDocument.document.object.getSymbolId() == NORMATIVE_DOCUMENT_SYMBOL_ID) {
+                        completedNormativeDocuments.add(new NormativeDocumentInfo(containedDocument.document.object))
+                    }
+                }
+            }
+
             completedNormativeDocuments = completedNormativeDocuments
                     .unique(Comparator.comparing { NormativeDocumentInfo nDI -> nDI.document.document.object.getObjectDefinitionId() })
         }
@@ -1178,7 +1187,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .findAll { Edge e -> e.getEdgeTypeId() in DOCUMENT_W_EPC_FUNCTION_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getSource() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
-                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
             inputDocuments = documentObjects.collect { ObjectElement documentObject -> new DocumentInfo(documentObject) }
         }
@@ -1235,7 +1243,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_DOCUMENT_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getTarget() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() in DOCUMENT_OBJECT_TYPE_IDS }
-                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
             outputDocuments = documentObjects.collect { ObjectElement documentObject -> new DocumentInfo(documentObject) }
         }
@@ -1433,11 +1440,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             if (docVersion && docDate) {
                 docVersionWithDateTemplateValue = "${docVersion} от ${docDate}"
             } else if (docVersion && !docDate) {
-                docVersionWithDateTemplateValue = "${docVersion} от ${DOC_DATE_TEMPLATE_KEY}"
+                docVersionWithDateTemplateValue = "${docVersion} от <${DOC_DATE_TEMPLATE_KEY}>"
             } else if (!docVersion && docDate) {
-                docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${docDate}"
+                docVersionWithDateTemplateValue = "<${DOC_VERSION_TEMPLATE_KEY}> от ${docDate}"
             } else {
-                docVersionWithDateTemplateValue = "${DOC_VERSION_TEMPLATE_KEY} от ${DOC_DATE_TEMPLATE_KEY}"
+                docVersionWithDateTemplateValue = "<${DOC_VERSION_TEMPLATE_KEY}> от <${DOC_DATE_TEMPLATE_KEY}>"
             }
 
             Map<String, String> map = new HashMap<>()
@@ -1449,7 +1456,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             map.put(DOC_DATE_TEMPLATE_KEY, docDate)
             map.put(PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.subprocess.function.name)
             map.put(FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.parentProcess.function.name)
-            map.put(PROCESS_REQUIREMENTS_TEMPLATE_KEY, subprocessDescription.subprocess.requirements)
+            map.put(PROCESS_REQUIREMENTS_TEMPLATE_KEY, subprocessDescription.subprocess.requirements ? "${subprocessDescription.subprocess.requirements}." : subprocessDescription.subprocess.requirements)
             return map
         }
 
@@ -1493,14 +1500,18 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<String> requisitesNormativeDocuments = subprocessDescription.completedNormativeDocuments.collect { NormativeDocumentInfo normativeDocument -> normativeDocument.requisites ? normativeDocument.requisites : pattern }
             requisitesNormativeDocuments = requisitesNormativeDocuments.sort()
 
-            boolean replacementWas = false
-            for (requisitesNormativeDocument in requisitesNormativeDocuments) {
-                boolean replacementFlag = replaceInCopyParagraph(document, pattern, requisitesNormativeDocument)
-                replacementWas = replacementFlag ? replacementFlag : replacementWas
+            int normativeDocumentsCount = requisitesNormativeDocuments.size()
+            requisitesNormativeDocuments.eachWithIndex { String requisitesNormativeDocument, int number ->
+                String replacement = number + 1 < normativeDocumentsCount ? "${requisitesNormativeDocument};" : "${requisitesNormativeDocument}."
+                replaceInCopyParagraph(document, pattern, replacement)
             }
 
-            if (replacementWas) {
-                removeParagraphByText(document, pattern)
+            if (subprocessDescription.completedNormativeDocuments) {
+                Pattern searchPattern = Pattern.compile("^${pattern}\$")
+                List<XWPFParagraph> paragraphs = findParagraphsByPattern(document, searchPattern)
+                paragraphs.each { XWPFParagraph paragraph ->
+                    removeParagraph(document, paragraph)
+                }
             }
         }
 
@@ -1524,20 +1535,19 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         private void fillProcessGoals() {
             String pattern = "<${PROCESS_GOAL_TEMPLATE_KEY}>"
 
-            boolean haveNotEmptyGoal = true
             int goalsCount = subprocessDescription.goals.size()
             subprocessDescription.goals.eachWithIndex { CommonObjectInfo goal, int number ->
-                if (goal.name) {
-                    haveNotEmptyGoal = true
-                }
-
                 String goalName = goal.name ? goal.name : pattern
                 String replacement = number + 1 < goalsCount ? "${goalName};" : "${goalName}."
                 replaceInCopyParagraph(document, pattern, replacement)
             }
 
-            if (haveNotEmptyGoal) {
-                removeParagraphByText(document, pattern)
+            if (subprocessDescription.goals) {
+                Pattern searchPattern = Pattern.compile("^${pattern}\$")
+                List<XWPFParagraph> paragraphs = findParagraphsByPattern(document, searchPattern)
+                paragraphs.each { XWPFParagraph paragraph ->
+                    removeParagraph(document, paragraph)
+                }
             }
         }
 
@@ -1689,7 +1699,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     List<String> positions = []
                     for (position in businessRoleInfo.positions) {
                         String positionName = position.position.name ? position.position.name : businessRolePositionPattern
-                        String organizationalUnitName = position.organizationalUnit.name ? position.organizationalUnit.name : businessRolePositionOrganizationalUnitPattern
+
+                        String organizationalUnitName
+                        if (position.organizationalUnit) {
+                            organizationalUnitName = position.organizationalUnit.name ? position.organizationalUnit.name : businessRolePositionOrganizationalUnitPattern
+                        } else {
+                            organizationalUnitName = businessRolePositionOrganizationalUnitPattern
+                        }
+
                         positions.add("${positionName} (${organizationalUnitName})")
                     }
                     positions = positions.sort()
@@ -1840,7 +1857,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(elements, scenarioPattern, scenarioReplacement)
 
             String requirementsPattern = "<${SCENARIO_REQUIREMENTS_TEMPLATE_KEY}>"
-            String requirementsReplacement = description.scenario.functionInfo.requirements ? description.scenario.functionInfo.requirements : requirementsPattern
+            String requirementsReplacement = description.scenario.functionInfo.requirements ? "${description.scenario.functionInfo.requirements}." : requirementsPattern
             replaceParagraphsText(elements, requirementsPattern, requirementsReplacement)
 
             String pictureNumberPattern = "<${SCENARIO_PICTURE_NUMBER_TEMPLATE_KEY}>"
@@ -1963,7 +1980,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphsText(elements, procedurePattern, procedureReplacement)
 
             String requirementsPattern = "<${PROCEDURE_REQUIREMENTS_TEMPLATE_KEY}>"
-            String requirementsReplacement = description.procedure.functionInfo.requirements ? description.procedure.functionInfo.requirements : requirementsPattern
+            String requirementsReplacement = description.procedure.functionInfo.requirements ? "${description.procedure.functionInfo.requirements}." : requirementsPattern
             replaceParagraphsText(elements, requirementsPattern, requirementsReplacement)
 
             String pictureNumberPattern = "<${PROCEDURE_PICTURE_NUMBER_TEMPLATE_KEY}>"
@@ -3044,13 +3061,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static void removeParagraphByText(XWPFDocument document, String pattern) {
-            List<XWPFParagraph> paragraphs = findParagraphsByText(document, pattern)
-            paragraphs.each { XWPFParagraph paragraph ->
-                removeParagraph(document, paragraph)
-            }
-        }
-
         private static void removeParagraph(XWPFDocument document, XWPFParagraph paragraph) {
             int position = document.getPosOfParagraph(paragraph)
             document.removeBodyElement(position)
@@ -3364,10 +3374,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         subprocess.identifyAnalyzedEPC()
-        subprocess.defineNormativeDocuments()
-        subprocess.completeNormativeDocuments()
         subprocess.defineDocumentCollections()
         subprocess.completeDocumentCollections()
+        subprocess.defineNormativeDocuments()
+        subprocess.completeNormativeDocuments()
         subprocess.analyzeEPCModels()
     }
 
