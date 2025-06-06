@@ -388,19 +388,19 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String DESCRIPTION_DEFINITION_ATTR_ID = 'AT_DESC'
     private static final String FULL_NAME_ATTR_ID = 'AT_NAME_FULL'
 
-    // TODO: [critical] определиться со списком исключаемых символов (интерфейсы, группировка интерфейсов и т.д.)
     private static final List<String> EXCLUDED_FUNCTION_SYMBOL_IDS = [
-            '07b15070-9b4e-4919-8ed0-9bae8764c7fa', // TODO: удалить? (интерфейс, созданный через редактор и генератор)
-            '53a01270-95da-11ea-05b7-db7cafd96ef7', // TODO: удалить? (интерфейс СБП)
             '75f2e570-bdd3-11e5-05b7-db7cafd96ef7', // интерфейс смежного процесса
             'ST_PRCS_IF', // интерфейс процесса
             'fd841c20-cc37-11e6-05b7-db7cafd96ef7', // группировка интерфейсов
     ]
-    // TODO: переименовать??? и уточнить по просто внешнему, а не смежному
     private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
     private static final String NORMATIVE_DOCUMENT_SYMBOL_ID = '7096d320-cf42-11e2-69e4-ac8112d1b401'
-    // TODO: уточнить по другим типам символа сценария
-    private static final String SCENARIO_SYMBOL_ID = 'ST_SCENARIO'
+    private static final String SCENARIO_SYMBOL_IDS = [
+            '1647b400-c1a5-11e4-3864-ff0f8fe73e88', // сценарий SAP (типовой)
+            '1bea43c0-c768-11e2-69e4-ac8112d1b401', // сценарий (типовой)
+            '478e24e0-c1a5-11e4-3864-ff0f8fe73e88', // сценарий SAP
+            'ST_SCENARIO', // сценарий
+    ]
     private static final String STATUS_SYMBOL_ID = 'd6e8a7b0-7ce6-11e2-3463-e4115bf4fdb9'
 
     //------------------------------------------------------------------------------------------------------------------
@@ -460,7 +460,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         CommonFunctionInfo(Model model) {
-            // TODO: [critical] логика получения имени, требований, кода для одиночных сценариев
             this.function = new CommonObjectInfo(model)
             this.code = getAttributeValue(model, DATA_ELEMENT_CODE_ATTR_ID)
             this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID)
@@ -469,7 +468,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
     private class PositionInfo {
         CommonObjectInfo position
-        // TODO: уточнить, одна ли ОЕ?
         CommonObjectInfo organizationalUnit
 
         PositionInfo(ObjectElement position) {
@@ -572,7 +570,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private class DocumentInfo {
         CommonObjectInfo document
         String type
-        // TODO: уточнить, может ли быть несколько?
         List<CommonObjectInfo> statuses = []
 
         DocumentInfo(ObjectElement document) {
@@ -627,7 +624,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            // TODO: обсудить логику определения состава коллекции (пример с отсутсвием связей для части доков на модели; c неправильным направлением связи)
             String modelTypeId = model.getModelTypeId()
             List<ObjectElement> containedDocumentObjects = []
 
@@ -885,7 +881,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void defineScenariosViaProcessSelectionModel() {
             List<ObjectElement> scenarioObjects = processSelectionModel.getObjects()
-                    .findAll { ObjectElement oE -> oE.getSymbolId() == SCENARIO_SYMBOL_ID }
+                    .findAll { ObjectElement oE -> oE.getSymbolId() in SCENARIO_SYMBOL_IDS }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
 
@@ -893,7 +889,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 Model scenarioModel = getEPCModel(scenarioObject)
 
                 if (scenarioModel == null) {
-                    // TODO: [critical] что делать, если у какого-либо сценария нет декомпозиции?
                     return
                 }
 
@@ -1030,7 +1025,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 Model procedureModel = getEPCModel(procedureObject)
 
                 if (procedureModel == null) {
-                    // TODO: [critical] что делать, если выбран режим до 4 уровня, а у какого-либо 3 лвла нет декомпозиции на 4?
                     return
                 }
 
@@ -1108,7 +1102,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             documentObjects.each { ObjectElement documentObject ->
                 Model documentCollectionModel = findDocumentCollectionModel(documentObject)
 
-                // TODO: обсудить логику определения набора документов (пример ошибки с типом символа)
                 if (documentCollectionModel) {
                     documentCollections.add(new DocumentCollectionInfo(documentObject, documentCollectionModel))
                 }
@@ -1619,7 +1612,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphText(newTableRow.getTableCells().get(1).getParagraphs().get(0), namePattern, nameReplacement)
         }
 
-        // TODO: сортировка самих смежных БП
         private void fillExternalBusinessProcesses() {
             XWPFTable table = findTableByHeaders(document, EXTERNAL_BUSINESS_PROCESS_TABLE_HEADERS)
 
@@ -1627,11 +1619,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            for (externalProcessDescription in subprocessDescription.completedExternalProcessesWithInputFlows) {
+            List<SubprocessDescription.ExternalProcessDescription> sortedExternalProcessDescriptionsWithInputFlows = subprocessDescription.completedExternalProcessesWithInputFlows.sort { SubprocessDescription.ExternalProcessDescription ePD -> ePD.externalProcess.function.name }
+            List<SubprocessDescription.ExternalProcessDescription> sortedExternalProcessDescriptionsWithOutputFlows = subprocessDescription.completedExternalProcessesWithOutputFlows.sort { SubprocessDescription.ExternalProcessDescription ePD -> ePD.externalProcess.function.name }
+
+            for (externalProcessDescription in sortedExternalProcessDescriptionsWithInputFlows) {
                 fillExternalBusinessProcess(table, externalProcessDescription, EXTERNAL_BUSINESS_PROCESS_INPUT_TEMPLATE_KEY, 1)
             }
 
-            for (externalProcessDescription in subprocessDescription.completedExternalProcessesWithOutputFlows) {
+            for (externalProcessDescription in sortedExternalProcessDescriptionsWithOutputFlows) {
                 fillExternalBusinessProcess(table, externalProcessDescription, EXTERNAL_BUSINESS_PROCESS_OUTPUT_TEMPLATE_KEY, 2)
             }
 
@@ -1684,8 +1679,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     return
                 }
 
-                // TODO: сортировка ролей
-                for (businessRoleInfo in subprocessDescription.completedBusinessRoles) {
+                List<BusinessRoleInfo> sortedBusinessRoles = subprocessDescription.completedBusinessRoles.sort { BusinessRoleInfo bRI -> bRI.businessRole.name }
+                for (businessRoleInfo in sortedBusinessRoles) {
                     String businessRolePattern = "<${PROCESS_BUSINESS_ROLE_TEMPLATE_KEY}>"
                     String businessRolePositionPattern = "<${PROCESS_BUSINESS_ROLE_POSITION_TEMPLATE_KEY}>"
                     String businessRolePositionOrganizationalUnitPattern = "<${PROCESS_BUSINESS_ROLE_POSITION_ORGANIZATIONAL_UNIT_TEMPLATE_KEY}>"
@@ -1735,7 +1730,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
-            // TODO: сортировка самих коллекций
             for (documentCollectionInfo in subprocessDescription.completedDocumentCollections) {
                 String documentCollectionPattern = "<${PROCESS_DOCUMENT_COLLECTION_TEMPLATE_KEY}>"
                 String containedDocumentPattern = "<${PROCESS_DOCUMENT_COLLECTION_CONTAINED_DOCUMENT_TEMPLATE_KEY}>"
