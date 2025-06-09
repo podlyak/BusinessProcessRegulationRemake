@@ -1499,7 +1499,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 replaceInCopyParagraph(document, pattern, replacement)
             }
 
-            if (subprocessDescription.completedNormativeDocuments) {
+            if (listHasNotPatternValue(requisitesNormativeDocuments, pattern)) {
                 Pattern searchPattern = Pattern.compile("^${pattern}\$")
                 List<XWPFParagraph> paragraphs = findParagraphsByPattern(document, searchPattern)
                 paragraphs.each { XWPFParagraph paragraph ->
@@ -2647,6 +2647,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 return
             }
 
+            if (pattern == replacement.substring(0, replacement.size() - 1)) {
+                return
+            }
+
             List<XWPFParagraph> paragraphs = findParagraphsByText(body, pattern)
             paragraphs.each { XWPFParagraph paragraph ->
                 XWPFParagraph newParagraph = addParagraph(body, paragraph)
@@ -2749,6 +2753,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
             }
             return foundedTable
+        }
+
+        private static boolean listHasNotPatternValue(List<String> list, String pattern) {
+            for (value in list) {
+                if (value != pattern) {
+                    return true
+                }
+            }
+
+            return false
         }
 
         private static boolean tableHasHeaders(XWPFTable table, List<String> headers) {
