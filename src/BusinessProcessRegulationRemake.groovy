@@ -395,7 +395,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     ]
     private static final String EXTERNAL_PROCESS_SYMBOL_ID = '75d9e6f0-4d1a-11e3-58a3-928422d47a25'
     private static final String NORMATIVE_DOCUMENT_SYMBOL_ID = '7096d320-cf42-11e2-69e4-ac8112d1b401'
-    private static final String SCENARIO_SYMBOL_IDS = [
+    private static final List<String> SCENARIO_SYMBOL_IDS = [
             '1647b400-c1a5-11e4-3864-ff0f8fe73e88', // сценарий SAP (типовой)
             '1bea43c0-c768-11e2-69e4-ac8112d1b401', // сценарий (типовой)
             '478e24e0-c1a5-11e4-3864-ff0f8fe73e88', // сценарий SAP
@@ -2484,6 +2484,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 }
             }
 
+            partsPattern = partsPattern.collect { String part -> Pattern.quote(part) }
             // noinspection RegExpUnnecessaryNonCapturingGroup
             Pattern pattern = Pattern.compile("^(?:(?:${String.join(')|(?:', partsPattern)}))\$")
             return pattern
