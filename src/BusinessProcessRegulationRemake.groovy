@@ -1,4 +1,8 @@
 import groovy.util.logging.Slf4j
+import org.apache.poi.ooxml.POIXMLRelation
+import org.apache.poi.openxml4j.opc.PackagePart
+import org.apache.poi.openxml4j.opc.PackageRelationshipTypes
+import org.apache.poi.util.IOUtils
 import org.apache.poi.util.Units
 import org.apache.poi.xwpf.usermodel.BodyElementType
 import org.apache.poi.xwpf.usermodel.IBody
@@ -7,15 +11,18 @@ import org.apache.poi.xwpf.usermodel.ParagraphAlignment
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns
 import org.apache.poi.xwpf.usermodel.XWPFAbstractNum
 import org.apache.poi.xwpf.usermodel.XWPFDocument
+import org.apache.poi.xwpf.usermodel.XWPFFactory
 import org.apache.poi.xwpf.usermodel.XWPFHyperlinkRun
 import org.apache.poi.xwpf.usermodel.XWPFNum
 import org.apache.poi.xwpf.usermodel.XWPFNumbering
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
+import org.apache.poi.xwpf.usermodel.XWPFPictureData
 import org.apache.poi.xwpf.usermodel.XWPFRun
 import org.apache.poi.xwpf.usermodel.XWPFTable
 import org.apache.poi.xwpf.usermodel.XWPFTableCell
 import org.apache.poi.xwpf.usermodel.XWPFTableRow
 import org.apache.xmlbeans.XmlCursor
+import org.apache.xmlbeans.XmlToken
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTAbstractNum
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBookmark
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTDecimalNumber
@@ -25,6 +32,7 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTLvl
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTNumLvl
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTR
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd
@@ -32,10 +40,14 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSimpleField
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STJc
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STNumberFormat
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STPageOrientation
+import ru.nextconsulting.bpm.dto.FullModelDefinition
 import ru.nextconsulting.bpm.dto.NodeId
 import ru.nextconsulting.bpm.dto.SimpleMultipartFile
 import ru.nextconsulting.bpm.repository.business.AttributeValue
+import ru.nextconsulting.bpm.repository.model.layout.GridCell
+import ru.nextconsulting.bpm.repository.model.layout.GridHeader
 import ru.nextconsulting.bpm.repository.structure.FileNodeDTO
+import ru.nextconsulting.bpm.repository.structure.ModelNode
 import ru.nextconsulting.bpm.repository.structure.Node
 import ru.nextconsulting.bpm.repository.structure.ObjectDefinitionNode
 import ru.nextconsulting.bpm.repository.structure.ScriptParameter
@@ -49,9 +61,11 @@ import ru.nextconsulting.bpm.script.tree.node.TreeNode
 import ru.nextconsulting.bpm.script.utils.ModelUtils
 import ru.nextconsulting.bpm.scriptengine.context.ContextParameters
 import ru.nextconsulting.bpm.scriptengine.context.CustomScriptContext
+import ru.nextconsulting.bpm.scriptengine.customapi.ImageApi
 import ru.nextconsulting.bpm.scriptengine.exception.SilaScriptException
 import ru.nextconsulting.bpm.scriptengine.script.GroovyScript
 import ru.nextconsulting.bpm.scriptengine.serverapi.FileApi
+import ru.nextconsulting.bpm.scriptengine.serverapi.ModelApi
 import ru.nextconsulting.bpm.scriptengine.util.ParamUtils
 import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameter
 import ru.nextconsulting.bpm.scriptengine.util.SilaScriptParameters
@@ -99,6 +113,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 .login('superadmin')
                 .password('WM_Sila_123')
                 .apiBaseUrl('http://localhost:8080/')
+                .imageServiceUrl('http://localhost:8084/')
+                .silaUrl('http://localhost:8080/')
                 .build()
         CustomScriptContext context = CustomScriptContext.create(parameters)
 
@@ -127,6 +143,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     static final String DETAIL_LEVEL_PARAM_NAME = 'Глубина детализации регламента'
     static final String DOC_VERSION_PARAM_NAME = 'Номер версии регламента'
     static final String DOC_DATE_PARAM_NAME = 'Дата утверждения регламента'
+
+    //------------------------------------------------------------------------------------------------------------------
+    // формат получаемых изображений
+    //------------------------------------------------------------------------------------------------------------------
+    static final ImageType IMAGE_TYPE = ImageType.SVG
 
     //------------------------------------------------------------------------------------------------------------------
     // константы id элементов
@@ -413,12 +434,104 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static Map<String, String> foundedAbbreviations = new TreeMap<>()
 
     CustomScriptContext context
+    ImageApi imageApi
+    ModelApi modelApi
     private TreeRepository treeRepository
 
     private static int detailLevel
     private static String docVersion
     private static String docDate
     private static String currentYear = LocalDate.now().getYear().toString()
+
+    enum ImageType {
+        PNG,
+        SVG,
+    }
+
+    class ModelImage {
+        byte[] image
+        ImageType type
+        int width
+        int height
+
+        ModelImage(byte[] image, ImageType type, int width, int height) {
+            this.image = image
+            this.type = type
+            this.width = width
+            this.height = height
+        }
+
+        void addToRun(XWPFDocument document, XWPFRun run, int width, int height) {
+            if (type == ImageType.PNG) {
+                InputStream is = new ByteArrayInputStream(image)
+                run.addPicture(is, XWPFDocument.PICTURE_TYPE_PNG, "image.png", Units.toEMU(width), Units.toEMU(height))
+            }
+
+            if (type == ImageType.SVG) {
+                CTR ctr = run.getCTR()
+
+                String blipIdPng = document.addPictureData(new ByteArrayInputStream(image), XWPFDocument.PICTURE_TYPE_PNG)
+                int id = document.getNextPicNameNumber(XWPFDocument.PICTURE_TYPE_PNG)
+                String blipId = ((XWPFDocumentSvg) document).addSVGPicture(new ByteArrayInputStream(image))
+                String widthString = String.valueOf(Units.pixelToEMU(width))
+                String heightString = String.valueOf(Units.pixelToEMU(height))
+                String xmlSvgStructure = "<w:drawing\n" +
+                        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:rel=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
+                        "<wp:inline\n" +
+                        "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">" +
+                        "<wp:extent cx=\"" + widthString + "\" cy=\"" + heightString + "\"/>" +
+                        "<wp:effectExtent l=\"0\" t=\"0\" r=\"9525\" b=\"9525\"/>" +
+                        "<wp:docPr id=\"1\" name=\"Graphic 1\"/>" +
+                        "<wp:cNvGraphicFramePr>" +
+                        "<a:graphicFrameLocks\n" +
+                        "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/>" +
+                        "</wp:cNvGraphicFramePr>" +
+                        "<a:graphic\n" +
+                        "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+                        "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">" +
+                        "<pic:pic\n" +
+                        "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">" +
+                        "<pic:nvPicPr>" +
+                        "<pic:cNvPr id=\"" + id + "\" name=\"test.svg\"/>" +
+                        "<pic:cNvPicPr/>" +
+                        "</pic:nvPicPr>" +
+                        "<pic:blipFill>" +
+                        "<a:blip rel:embed=\"" + blipIdPng + "\">" +
+                        "<a:extLst>" +
+                        "<a:ext uri=\"{28A0092B-C50C-407E-A947-70E740481C1C}\">" +
+                        "<a14:useLocalDpi\n" +
+                        "xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\" val=\"0\"/>" +
+                        "</a:ext>" +
+                        "<a:ext uri=\"{96DAC541-7B7A-43D3-8B79-37D633B846F1}\">" +
+                        "<asvg:svgBlip\n" +
+                        "xmlns:asvg=\"http://schemas.microsoft.com/office/drawing/2016/SVG/main\" rel:embed=\"" + blipId + "\"/>" +
+                        "</a:ext>" +
+                        "</a:extLst>" +
+                        "</a:blip>" +
+                        "<a:stretch>" +
+                        "<a:fillRect/>" +
+                        "</a:stretch>" +
+                        "</pic:blipFill>" +
+                        "<pic:spPr>" +
+                        "<a:xfrm>" +
+                        "<a:off x=\"0\" y=\"0\"/>" +
+                        "<a:ext cx=\"" + widthString + "\" cy=\"" + heightString + "\"/>" +
+                        "</a:xfrm>" +
+                        "<a:prstGeom prst=\"rect\">" +
+                        "<a:avLst/>" +
+                        "</a:prstGeom>" +
+                        "</pic:spPr>" +
+                        "</pic:pic>" +
+                        "</a:graphicData>" +
+                        "</a:graphic>" +
+                        "</wp:inline>" +
+                        "</w:drawing>"
+
+                XmlToken xmlToken = XmlToken.Factory.parse(xmlSvgStructure)
+                ctr.set(xmlToken)
+            }
+        }
+    }
 
     enum SubprocessOwnerType {
         ORGANIZATIONAL_UNIT,
@@ -883,9 +996,32 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             List<ObjectElement> scenarioObjects = processSelectionModel.getObjects()
                     .findAll { ObjectElement oE -> oE.getSymbolId() in SCENARIO_SYMBOL_IDS }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
-                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
 
+            Map<String, ObjectElement> parentScenarioObjectMap = new HashMap<>()
             scenarioObjects.each { ObjectElement scenarioObject ->
+                String parent = scenarioObject._getDiagramElement().parent
+                parentScenarioObjectMap.put(parent, scenarioObject)
+            }
+
+            ModelNode modelNode = (ModelNode) processSelectionModel._getNode().asNodeSubtype()
+            List<GridCell> modelCells = modelNode.layout.cells
+            List<GridHeader> columns = modelNode.layout.columns
+
+            Map<Integer, String> columnParentMap = new TreeMap<>()
+            for (parent in parentScenarioObjectMap.keySet()) {
+                GridCell cell = modelCells.find { GridCell c -> c.id == parent }
+                String columnId = cell.columnId
+
+                columns.eachWithIndex { GridHeader column, int number ->
+                    if (column.id == columnId) {
+                        columnParentMap.put(number, parent)
+                        return
+                    }
+                }
+            }
+
+            for (parent in columnParentMap.values()) {
+                ObjectElement scenarioObject = parentScenarioObjectMap.get(parent)
                 Model scenarioModel = getEPCModel(scenarioObject)
 
                 if (scenarioModel == null) {
@@ -1787,9 +1923,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     imageParagraph.removeRun(0)
                 }
 
-                byte[] image = subprocessDescription.processSelectionModel.getImagePng()
                 XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
-                addPicture(imageParagraph, image, labelParagraph)
+                addPicture(imageParagraph, subprocessDescription.processSelectionModel, labelParagraph)
             } else {
                 document.removeBodyElement(imageParagraphPosition + 1)
                 document.removeBodyElement(imageParagraphPosition)
@@ -1887,9 +2022,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 imageParagraph.removeRun(0)
             }
 
-            byte[] image = description.scenario.model.getImagePng()
             XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
-            addPicture(imageParagraph, image, labelParagraph)
+            addPicture(imageParagraph, description.scenario.model, labelParagraph)
 
             if (detailLevel == 3) {
                 XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
@@ -2006,10 +2140,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 imageParagraph.removeRun(0)
             }
 
-            byte[] image = description.procedure.model.getImagePng()
             XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
-            addPicture(imageParagraph, image, labelParagraph)
-
+            addPicture(imageParagraph, description.procedure.model, labelParagraph)
 
             XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
             List<EPCFunctionDescription> functions = description.procedure.epcFunctions
@@ -2792,61 +2924,72 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return true
         }
 
-        private static XWPFParagraph addPicture(XWPFParagraph imageParagraph, byte[] image, XWPFParagraph labelParagraph) {
+        private XWPFParagraph addPicture(XWPFParagraph imageParagraph, Model model, XWPFParagraph labelParagraph) {
             try {
-                if (image.length == 0) {
+                ModelImage modelImage = getModelImage(model, IMAGE_TYPE)
+
+                if (modelImage.image.length == 0) {
                     throw new Exception("Изображение не найдено")
                 }
 
                 XWPFRun run = imageParagraph.createRun()
                 imageParagraph.setAlignment(ParagraphAlignment.CENTER)
 
-                final int longSide = 700
-                final int shortSide = 450
-                final int labelStringHeight = 16
+                // Если изображение широкое, то разворачиваем страницу
+                if (modelImage.width > modelImage.height) {
+                    // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
+                    // после данного параграфа автоматически ставится разрыв раздела
+                    setPageOrientation(labelParagraph, STPageOrientation.LANDSCAPE)
+                } else {
+                    // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
+                    // после данного параграфа автоматически ставится разрыв раздела
+                    setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
+                }
 
+                int shortSide
+                int longSide
+
+                if (modelImage.type == ImageType.PNG) {
+                    shortSide = 450
+                    longSide = 700
+                } else if (modelImage.type == ImageType.SVG) {
+                    final Double A4WCM = 21.0D
+                    final Double A4HCM = 29.7D
+
+                    shortSide = getCmInPoints(A4WCM)
+                    longSide = getCmInPoints(A4HCM)
+                } else {
+                    throw new Exception('Неподдерживаемый тип изображения')
+                }
+
+                final int labelStringHeight = 16
                 int labelLength = labelParagraph.getText().size()
 
                 int pageW
                 int pageH
-                int width
-                int height
 
-                try (InputStream is = new ByteArrayInputStream(image)) {
-                    BufferedImage img = ImageIO.read(is)
-
-                    // Если изображение широкое, то разворачиваем страницу
-                    if (img.width > img.height) {
-                        // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
-                        // после данного параграфа автоматически ставится разрыв раздела
-                        setPageOrientation(labelParagraph, STPageOrientation.LANDSCAPE)
-                        int labelStringsCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
-                        pageW = longSide
-                        pageH = shortSide - labelStringsCount * labelStringHeight
-                    } else {
-                        // ориентацию настраиваем для последнего параграфа на странице (надписи под рисунком), так как
-                        // после данного параграфа автоматически ставится разрыв раздела
-                        setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
-                        int labelStringsCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
-                        pageW = shortSide
-                        pageH = longSide - labelStringsCount * labelStringHeight
-                    }
-
-                    // Если изображение не помещается на страницу, то надо его масштабировать
-                    double scale = 1.0
-                    if (img.width > pageW || img.height > pageH) {
-                        double widthScale = pageW / img.getWidth()
-                        double heightScale = pageH / img.getHeight()
-                        scale = Math.min(widthScale, heightScale)
-                    }
-
-                    width = (int) (img.getWidth() * scale)
-                    height = (int) (img.getHeight() * scale)
+                if (modelImage.width > modelImage.height) {
+                    int labelStringsCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
+                    pageW = longSide
+                    pageH = shortSide - labelStringsCount * labelStringHeight
+                } else {
+                    int labelStringsCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
+                    pageW = shortSide
+                    pageH = longSide - labelStringsCount * labelStringHeight
                 }
 
-                try (InputStream is = new ByteArrayInputStream(image)) {
-                    run.addPicture(is, XWPFDocument.PICTURE_TYPE_PNG, "image.png", Units.toEMU(width), Units.toEMU(height))
+                // Если изображение не помещается на страницу, то надо его масштабировать
+                double scale = 1.0
+                if (modelImage.width > pageW || modelImage.height > pageH) {
+                    double widthScale = pageW / modelImage.width
+                    double heightScale = pageH / modelImage.height
+                    scale = Math.min(widthScale, heightScale)
                 }
+
+                int width = (int) (modelImage.width * scale)
+                int height = (int) (modelImage.height * scale)
+
+                modelImage.addToRun(document, run, width, height)
             }
             catch (Exception e) {
                 setPageOrientation(labelParagraph, STPageOrientation.PORTRAIT)
@@ -2867,6 +3010,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 pageSize.setW(595 * 20)
                 pageSize.setH(842 * 20)
             }
+        }
+
+        private static int getCmInPoints(Double cm) {
+            return (int) (cm * 28.3464567)
         }
 
         private static XWPFParagraph addParagraph(IBody body, XWPFParagraph paragraph) {
@@ -3213,6 +3360,45 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 .orElse(null)
     }
 
+    private ModelImage getModelImage(Model model, ImageType type) {
+        if (type == ImageType.PNG) {
+            byte[] image = model.getImagePng()
+            InputStream is = new ByteArrayInputStream(image)
+            BufferedImage img = ImageIO.read(is)
+            return new ModelImage(image, type, img.width, img.height)
+        }
+
+        if (type == ImageType.SVG) {
+            FullModelDefinition modelDefinition = modelApi.getFullModelDefinition(model.getRepositoryId(), model.getId())
+            String svg = imageApi.getImageSvg(modelDefinition)
+            svg = svg.replaceAll('\n', '')
+            svg = svg.replaceAll(' +', ' ')
+
+            byte[] image = svg.getBytes()
+            int width = extractWidthSvgImage(svg)
+            int height = extractHeightSvgImage(svg)
+            return new ModelImage(image, type, width, height)
+        }
+
+        throw new Exception('Неподдерживаемый тип изображения')
+    }
+
+    private static int extractWidthSvgImage(String svg) {
+        int firstIndex = svg.indexOf('width=')
+        int secondIndex = svg.indexOf('"', firstIndex) + 1
+        int thirdIndex = svg.indexOf('"', secondIndex)
+        String width = svg.substring(secondIndex, thirdIndex)
+        return Double.parseDouble(width)
+    }
+
+    private static int extractHeightSvgImage(String svg) {
+        int firstIndex = svg.indexOf('height=')
+        int secondIndex = svg.indexOf('"', firstIndex) + 1
+        int thirdIndex = svg.indexOf('"', secondIndex)
+        String height = svg.substring(secondIndex, thirdIndex)
+        return Double.parseDouble(height)
+    }
+
     @Override
     void execute() {
         init()
@@ -3260,6 +3446,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     }
 
     private void init() {
+        imageApi = context.getApi(ImageApi.class)
+        modelApi = context.getApi(ModelApi.class)
         treeRepository = context.createTreeRepository(true)
         parseParameters()
         initAbbreviations()
@@ -3433,7 +3621,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             try {
                 FileInputStream fileInputStream = new FileInputStream(file)
-                return new XWPFDocument(fileInputStream)
+                return new XWPFDocumentSvg(fileInputStream)
             } catch (Exception e) {
                 log.error('Ошибка чтения файла', e)
             }
@@ -3477,5 +3665,54 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         byteArrayOutputStream.close()
 
         return byteArrayOutputStream.toByteArray()
+    }
+}
+
+class XWPFDocumentSvg extends XWPFDocument {
+    XWPFDocumentSvg(InputStream is) throws IOException {
+        super(is)
+    }
+
+    String addSVGPicture(InputStream is) throws Exception {
+        int pictureCount = getAllPictures().size()
+        RelationPart relationPart = createRelationship(XWPFRelationSvg.IMAGE_SVG, XWPFFactory.getInstance(), pictureCount + 1, false)
+        XWPFPictureData img = relationPart.getDocumentPart()
+
+        try (OutputStream out = img.getPackagePart().getOutputStream()) {
+            IOUtils.copy(is, out)
+        }
+        pictures.add(img)
+        String relationId = getRelationId(img)
+        return relationId
+    }
+}
+
+class XWPFRelationSvg extends POIXMLRelation {
+    protected static final XWPFRelationSvg IMAGE_SVG = new XWPFRelationSvg(
+            'image/svg',
+            PackageRelationshipTypes.IMAGE_PART,
+            '/word/media/image#.svg',
+            XWPFPictureDataSvg::new,
+            XWPFPictureDataSvg::new,
+    )
+
+    protected XWPFRelationSvg(
+            String type,
+            String rel,
+            String defaultName,
+            NoArgConstructor noArgConstructor,
+            PackagePartConstructor packagePartConstructor
+    ) {
+        super(type, rel, defaultName, noArgConstructor, packagePartConstructor, null)
+    }
+}
+
+class XWPFPictureDataSvg extends XWPFPictureData {
+    protected XWPFPictureDataSvg() {
+        super()
+    }
+
+    protected XWPFPictureDataSvg(PackagePart part) {
+        super(part)
     }
 }
