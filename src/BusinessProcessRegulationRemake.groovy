@@ -3647,7 +3647,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         byte[] file = context.getApi(FileApi.class).downloadFile(FILE_REPOSITORY_ID, fileTreeNode.id)
-        return new XWPFDocument(new ByteArrayInputStream(file))
+        return new XWPFDocumentSvg(new ByteArrayInputStream(file))
     }
 
     private byte[] createZipFileContent(List<FileInfo> files) {
