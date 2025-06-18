@@ -3418,7 +3418,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         if (files.size() > 1) {
-            resultFileName = ZIP_RESULT_FILE_NAME_FIRST_PART + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
+            resultFileName = ZIP_RESULT_FILE_NAME_FIRST_PART + ' ' + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
             format = ZIP_FORMAT
 
             byte[] zipFileContent = createZipFileContent(files)
