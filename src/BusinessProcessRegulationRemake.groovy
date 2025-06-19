@@ -3487,7 +3487,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         if (imgType == 'PNG') {
             imageType = ImageType.PNG
         } else if (imgType == 'SVG') {
-            imageType == ImageType.SVG
+            imageType = ImageType.SVG
         } else {
             throw new Exception('Неподдерживаемый формат изображения')
         }
