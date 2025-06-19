@@ -105,6 +105,12 @@ void execute() {
                 required = false,
                 defaultValue = ''
         ),
+        @SilaScriptParameter(
+                name = IMAGE_TYPE_PARAM_NAME,
+                type = SilaScriptParamType.SELECT_STRING,
+                selectStringValues = ['PNG', 'SVG'],
+                defaultValue = 'PNG'
+        ),
 ])
 @Slf4j
 class BusinessProcessRegulationRemakeScript implements GroovyScript {
@@ -143,11 +149,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     static final String DETAIL_LEVEL_PARAM_NAME = 'Глубина детализации регламента'
     static final String DOC_VERSION_PARAM_NAME = 'Номер версии регламента'
     static final String DOC_DATE_PARAM_NAME = 'Дата утверждения регламента'
-
-    //------------------------------------------------------------------------------------------------------------------
-    // формат получаемых изображений
-    //------------------------------------------------------------------------------------------------------------------
-    static final ImageType IMAGE_TYPE = ImageType.SVG
+    static final String IMAGE_TYPE_PARAM_NAME = 'Формат получаемых изображений'
 
     //------------------------------------------------------------------------------------------------------------------
     // константы id элементов
@@ -441,6 +443,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static int detailLevel
     private static String docVersion
     private static String docDate
+    private static ImageType imageType
     private static String currentYear = LocalDate.now().getYear().toString()
 
     enum ImageType {
@@ -2926,7 +2929,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private XWPFParagraph addPicture(XWPFParagraph imageParagraph, Model model, XWPFParagraph labelParagraph) {
             try {
-                ModelImage modelImage = getModelImage(model, IMAGE_TYPE)
+                ModelImage modelImage = getModelImage(model, imageType)
 
                 if (modelImage.image.length == 0) {
                     throw new Exception("Изображение не найдено")
@@ -3458,6 +3461,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             detailLevel = 4
             docVersion = '01'
             docDate = '01.01.2025'
+            imageType = ImageType.PNG
             return
         }
 
@@ -3477,6 +3481,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             docDate = approvalDate.format('dd.MM.yyyy')
         } else {
             docDate = ''
+        }
+
+        String imgType = ParamUtils.parse(context.findParameter(IMAGE_TYPE_PARAM_NAME)) as String
+        if (imgType == 'PNG') {
+            imageType = ImageType.PNG
+        } else if (imgType == 'SVG') {
+            imageType == ImageType.SVG
+        } else {
+            throw new Exception('Неподдерживаемый формат изображения')
         }
     }
 
