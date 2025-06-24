@@ -166,7 +166,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v9.docx'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v10.docx'
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
@@ -222,14 +222,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             'Состав набора документов',
     ]
     private static final List<String> FUNCTIONS_TABLE_HEADERS = [
-            '№ пп',
-            'Входящие документы/события',
-            'Функция',
-            'Исходящие документы/события',
-            'Исполнители',
-            'Длительность выполнения',
-            'Связь с последующими функциями/процессами',
-            'Информационные системы',
+            "<${FUNCTION_NUMBER_TEMPLATE_KEY}>",
+            "<${FUNCTION_CODE_TEMPLATE_KEY}> <${FUNCTION_NAME_TEMPLATE_KEY}>",
+    ]
+    private static final List<String> FUNCTIONS_TABLE_DOCUMENT_HORIZONTAL_HEADERS = [
+            'Входящие документы',
+            'Исходящие документы',
     ]
     private static final List<String> RESPONSIBILITY_MATRIX_HEADERS = [
             'Процедура / Роль',
@@ -277,14 +275,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String SCENARIO_REQUIREMENTS_TEMPLATE_KEY = 'Требования к сценарию'
     private static final String SCENARIO_MODEL_TEMPLATE_KEY = 'Модель сценария'
     private static final String FUNCTION_NUMBER_TEMPLATE_KEY = '№ пп'
-    private static final String INPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Входящий документ/событие'
-    private static final String FUNCTION_TEMPLATE_KEY = 'Функция'
-    private static final String OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY = 'Исходящий документ/событие'
+    private static final String FUNCTION_CODE_TEMPLATE_KEY = 'Код функции'
+    private static final String FUNCTION_NAME_TEMPLATE_KEY = 'Функция'
     private static final String PERFORMER_TEMPLATE_KEY = 'Исполнитель'
-    private static final String DURATION_TEMPLATE_KEY = 'Длительность'
-    private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
+    private static final String INPUT_EVENT_TEMPLATE_KEY = 'Входящее событие'
+    private static final String INPUT_DOCUMENT_TEMPLATE_KEY = 'Входящий документ'
     private static final String INFORMATION_SYSTEM_TEMPLATE_KEY = 'Информационная система'
     private static final String FUNCTION_REQUIREMENTS_TEMPLATE_KEY = 'Требования к функции'
+    private static final String OUTPUT_EVENT_TEMPLATE_KEY = 'Исходящее событие'
+    private static final String OUTPUT_DOCUMENT_TEMPLATE_KEY = 'Исходящий документ'
+    private static final String DURATION_TEMPLATE_KEY = 'Длительность'
+    private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
     private static final String BUSINESS_ROLE_NAME_TEMPLATE_KEY = 'Роль'
     private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
     private static final String PROCEDURE_NAME_TEMPLATE_KEY = 'Процедура'
@@ -1276,17 +1277,9 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private void analyzeFunction(EPCFunctionDescription epcFunction) {
             epcFunction.findInputDocuments()
-
-            if (!epcFunction.inputDocuments) {
-                epcFunction.findInputEvents()
-            }
-
+            epcFunction.findInputEvents()
             epcFunction.findOutputDocuments()
-
-            if (!epcFunction.outputDocuments) {
-                epcFunction.findOutputEvents()
-            }
-
+            epcFunction.findOutputEvents()
             epcFunction.findPerformers()
             epcFunction.findInformationSystems()
             epcFunction.findChildFunctions(epcFunctions)
@@ -1744,7 +1737,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
             code = code ? code : "<${BUSINESS_PROCESS_CODE_TEMPLATE_KEY}>"
             name = name ? name : "<${BUSINESS_PROCESS_NAME_TEMPLATE_KEY}>"
-            String nameReplacement = "\\L${(level.toInteger() - 1).toString()}${code} ${name}"
+            String nameReplacement = "${code} ${name}"
 
             XWPFTableRow newTableRow = copyTableRow(table.getRows().get(1), table)
             replaceParagraphText(newTableRow.getTableCells().get(0).getParagraphs().get(0), levelPattern, level)
@@ -2032,14 +2025,22 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
                 List<EPCFunctionDescription> functions = description.scenario.epcFunctions
 
-                if (table.getRows().size() != 3) {
+                if (table.getRows().size() != 10) {
                     return
                 }
 
                 fillFunctionsTable(table, functions)
 
-                table.removeRow(2)
-                table.removeRow(1)
+                for (int pos = 9; pos > 0; pos--) {
+                    table.removeRow(pos)
+                }
+
+                if (functions) {
+                    table.removeRow(0)
+                } else {
+                    replaceParagraphText(table.getRows().get(0).getTableCells().get(0).getParagraphs().get(0), "<${FUNCTION_NUMBER_TEMPLATE_KEY}>", '')
+                    replaceParagraphText(table.getRows().get(0).getTableCells().get(1).getParagraphs().get(0), "<${FUNCTION_CODE_TEMPLATE_KEY}> <${FUNCTION_NAME_TEMPLATE_KEY}>", '')
+                }
             }
 
             if (detailLevel == 4) {
@@ -2149,113 +2150,67 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
             List<EPCFunctionDescription> functions = description.procedure.epcFunctions
 
-            if (table.getRows().size() != 3) {
+            if (table.getRows().size() != 10) {
                 return
             }
 
             fillFunctionsTable(table, functions)
 
-            table.removeRow(2)
-            table.removeRow(1)
+            for (int pos = 9; pos > 0; pos--) {
+                table.removeRow(pos)
+            }
+
+            if (functions) {
+                table.removeRow(0)
+            } else {
+                replaceParagraphText(table.getRows().get(0).getTableCells().get(0).getParagraphs().get(0), "<${FUNCTION_NUMBER_TEMPLATE_KEY}>", '')
+                replaceParagraphText(table.getRows().get(0).getTableCells().get(1).getParagraphs().get(0), "<${FUNCTION_CODE_TEMPLATE_KEY}> <${FUNCTION_NAME_TEMPLATE_KEY}>", '')
+            }
         }
 
         private static void fillFunctionsTable(XWPFTable table, List<EPCFunctionDescription> functions) {
             for (function in functions) {
-                XWPFTableRow newFunctionRow = copyTableRow(table.getRows().get(1), table)
-                XWPFTableRow newRequirementsRow = copyTableRow(table.getRows().get(2), table)
+                XWPFTableRow functionRow = copyTableRow(table.getRows().get(0), table)
+                XWPFTableRow performersRow = copyTableRow(table.getRows().get(1), table)
+                XWPFTableRow inputEventsRow = copyTableRow(table.getRows().get(2), table)
+                XWPFTableRow inputDocumentsRow = copyTableRow(table.getRows().get(3), table)
+                XWPFTableRow informationSystemsRow = copyTableRow(table.getRows().get(4), table)
+                XWPFTableRow requirementsRow = copyTableRow(table.getRows().get(5), table)
+                XWPFTableRow outputEventsRow = copyTableRow(table.getRows().get(6), table)
+                XWPFTableRow outputDocumentsRow = copyTableRow(table.getRows().get(7), table)
+                XWPFTableRow durationRow = copyTableRow(table.getRows().get(8), table)
+                XWPFTableRow childFunctionsRow = copyTableRow(table.getRows().get(9), table)
 
-                String numberPattern = "<${FUNCTION_NUMBER_TEMPLATE_KEY}>"
-                String numberReplacement = function.number.toString()
-                replaceParagraphText(newFunctionRow.getTableCells().get(0).getParagraphs().get(0), numberPattern, numberReplacement)
-
-                fillFunctionInputs(function, newFunctionRow.getTableCells().get(1))
-
-                String functionPattern = "<${FUNCTION_TEMPLATE_KEY}>"
-                String functionReplacement = function.function.function.name ? function.function.function.name : functionPattern
-                replaceParagraphText(newFunctionRow.getTableCells().get(2).getParagraphs().get(0), functionPattern, functionReplacement)
-
-                fillFunctionOutputs(function, newFunctionRow.getTableCells().get(3))
-                fillPerformers(function, newFunctionRow.getTableCells().get(4))
-
-                String durationPattern = "<${DURATION_TEMPLATE_KEY}>"
-                String durationReplacement = function.duration
-                replaceParagraphText(newFunctionRow.getTableCells().get(5).getParagraphs().get(0), durationPattern, durationReplacement)
-
-                fillChildFunctions(function, newFunctionRow.getTableCells().get(6))
-                fillInformationSystems(function, newFunctionRow.getTableCells().get(7))
-
-                String requirementsPattern = "<${FUNCTION_REQUIREMENTS_TEMPLATE_KEY}>"
-                String requirementsReplacement = function.function.requirements
-                replaceParagraphText(newRequirementsRow.getTableCells().get(0).getParagraphs().get(0), requirementsPattern, requirementsReplacement)
+                fillFunctionNumber(function, functionRow.getTableCells().get(0))
+                fillFunctionName(function, functionRow.getTableCells().get(1))
+                fillPerformers(function, performersRow.getTableCells().get(1))
+                fillFunctionInputEvents(function, inputEventsRow.getTableCells().get(1))
+                fillFunctionInputDocuments(function, inputDocumentsRow.getTableCells().get(1))
+                fillInformationSystems(function, informationSystemsRow.getTableCells().get(1))
+                fillRequirements(function, requirementsRow.getTableCells().get(1))
+                fillFunctionOutputEvents(function, outputEventsRow.getTableCells().get(1))
+                fillFunctionOutputDocuments(function, outputDocumentsRow.getTableCells().get(1))
+                fillDuration(function, durationRow.getTableCells().get(1))
+                fillChildFunctions(function, childFunctionsRow.getTableCells().get(1))
             }
         }
 
-        private static void fillFunctionInputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String inputPattern = "<${INPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
-
-            List<String> inputs = getInputsOutputs(function.inputDocuments, function.inputEvents, inputPattern)
-            inputs = inputs.sort()
-
-            int inputsCount = inputs.size()
-            inputs.eachWithIndex { String input, int number ->
-                String inputReplacement = number + 1 < inputsCount ? "${input};" : input
-                replaceInCopyParagraph(functionTableCell, inputPattern, inputReplacement)
-            }
-
-            if (inputs) {
-                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            } else {
-                addParagraphText(functionTableCell.getParagraphArray(0), '')
-            }
+        private static void fillFunctionNumber(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String numberPattern = "<${FUNCTION_NUMBER_TEMPLATE_KEY}>"
+            String numberReplacement = function.number.toString()
+            replaceParagraphText(functionTableCell.getParagraphs().get(0), numberPattern, numberReplacement)
         }
 
-        private static void fillFunctionOutputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String outputPattern = "<${OUTPUT_DOCUMENT_EVENT_TEMPLATE_KEY}>"
-
-            List<String> outputs = getInputsOutputs(function.outputDocuments, function.outputEvents, outputPattern)
-            outputs = outputs.sort()
-
-            int outputsCount = outputs.size()
-            outputs.eachWithIndex { String output, int number ->
-                String outputReplacement = number + 1 < outputsCount ? "${output};" : output
-                replaceInCopyParagraph(functionTableCell, outputPattern, outputReplacement)
-            }
-
-            if (outputs) {
-                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            } else {
-                addParagraphText(functionTableCell.getParagraphArray(0), '')
-            }
-        }
-
-        private static List<String> getInputsOutputs(List<DocumentInfo> documents, List<CommonObjectInfo> events, String inputOutputPattern) {
-            List<String> inputsOutputs = []
-
-            if (documents) {
-                for (document in documents) {
-                    String inputOutput = ''
-                    inputOutput += document.document.name ? document.document.name : inputOutputPattern
-                    inputOutput += " [${document.type}]"
-                    inputOutput += document.statuses ? " (${String.join(', ', document.statuses.collect { CommonObjectInfo status -> status.name })})" : ''
-                    inputsOutputs.add(inputOutput)
-                }
-            }
-
-            if (events) {
-                for (event in events) {
-                    String inputOutput = ''
-                    inputOutput += event.name ? event.name : inputOutputPattern
-                    inputOutput += " [событие]"
-                    inputsOutputs.add(inputOutput)
-                }
-            }
-
-            return inputsOutputs
+        private static void fillFunctionName(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String functionPattern = "<${FUNCTION_CODE_TEMPLATE_KEY}> <${FUNCTION_NAME_TEMPLATE_KEY}>"
+            String functionCode = function.function.code ? function.function.code : "<${FUNCTION_CODE_TEMPLATE_KEY}>"
+            String functionName = function.function.function.name ? function.function.function.name : "<${FUNCTION_NAME_TEMPLATE_KEY}>"
+            String functionReplacement = "${functionCode} ${functionName}"
+            replaceParagraphText(functionTableCell.getParagraphs().get(0), functionPattern, functionReplacement)
         }
 
         private static void fillPerformers(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String performerPattern = "<${PERFORMER_TEMPLATE_KEY}>"
-
             List<String> performers = []
             for (performerInfo in function.performers) {
                 String performer = ''
@@ -2264,23 +2219,84 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 performers.add(performer)
             }
             performers = performers.sort()
+            fillFunctionTableCell(functionTableCell, performers, performerPattern)
+        }
 
-            int performersCount = performers.size()
-            performers.eachWithIndex { String performer, int number ->
-                String performerReplacement = number + 1 < performersCount ? "${performer};" : performer
-                replaceInCopyParagraph(functionTableCell, performerPattern, performerReplacement)
-            }
+        private static void fillFunctionInputEvents(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String inputEventPattern = "<${INPUT_EVENT_TEMPLATE_KEY}>"
+            List<String> inputEvents = getFunctionEvents(function.inputEvents, inputEventPattern)
+            inputEvents = inputEvents.sort()
+            fillFunctionTableCell(functionTableCell, inputEvents, inputEventPattern)
+        }
 
-            if (performers) {
-                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            } else {
-                addParagraphText(functionTableCell.getParagraphArray(0), '')
+        private static void fillFunctionInputDocuments(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String inputDocumentPattern = "<${INPUT_DOCUMENT_TEMPLATE_KEY}>"
+            List<String> inputDocuments = getFunctionDocuments(function.inputDocuments, inputDocumentPattern)
+            inputDocuments = inputDocuments.sort()
+            fillFunctionTableCell(functionTableCell, inputDocuments, inputDocumentPattern)
+        }
+
+        private static void fillInformationSystems(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String informationSystemPattern = "<${INFORMATION_SYSTEM_TEMPLATE_KEY}>"
+            List<String> informationSystems = []
+            for (informationSystemInfo in function.informationSystems) {
+                String informationSystem = ''
+                informationSystem += informationSystemInfo.name ? informationSystemInfo.name : informationSystemPattern
+                informationSystems.add(informationSystem)
             }
+            informationSystems = informationSystems.sort()
+            fillFunctionTableCell(functionTableCell, informationSystems, informationSystemPattern)
+        }
+
+        private static void fillRequirements(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String requirementsPattern = "<${FUNCTION_REQUIREMENTS_TEMPLATE_KEY}>"
+            String requirementsReplacement = function.function.requirements
+            replaceParagraphText(functionTableCell.getParagraphs().get(0), requirementsPattern, requirementsReplacement)
+        }
+
+        private static void fillFunctionOutputEvents(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String outputEventPattern = "<${OUTPUT_EVENT_TEMPLATE_KEY}>"
+            List<String> outputEvents = getFunctionEvents(function.outputEvents, outputEventPattern)
+            outputEvents = outputEvents.sort()
+            fillFunctionTableCell(functionTableCell, outputEvents, outputEventPattern)
+        }
+
+        private static void fillFunctionOutputDocuments(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String outputDocumentPattern = "<${OUTPUT_DOCUMENT_TEMPLATE_KEY}>"
+            List<String> outputDocuments = getFunctionDocuments(function.outputDocuments, outputDocumentPattern)
+            outputDocuments = outputDocuments.sort()
+            fillFunctionTableCell(functionTableCell, outputDocuments, outputDocumentPattern)
+        }
+
+        private static List<String> getFunctionEvents(List<CommonObjectInfo> events, String eventPattern) {
+            List<String> resultEvents = []
+            for (event in events) {
+                String resultEvent = event.name ? event.name : eventPattern
+                resultEvents.add(resultEvent)
+            }
+            return resultEvents
+        }
+
+        private static List<String> getFunctionDocuments(List<DocumentInfo> documents, String documentPattern) {
+            List<String> resultDocuments = []
+            for (document in documents) {
+                String resultDocument = ''
+                resultDocument += document.document.name ? document.document.name : documentPattern
+                resultDocument += " [${document.type}]"
+                resultDocument += document.statuses ? " (${String.join(', ', document.statuses.collect { CommonObjectInfo status -> status.name })})" : ''
+                resultDocuments.add(resultDocument)
+            }
+            return resultDocuments
+        }
+
+        private static void fillDuration(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String durationPattern = "<${DURATION_TEMPLATE_KEY}>"
+            String durationReplacement = function.duration
+            replaceParagraphText(functionTableCell.getParagraphs().get(0), durationPattern, durationReplacement)
         }
 
         private static void fillChildFunctions(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
             String childFunctionPattern = "<${CHILD_FUNCTION_TEMPLATE_KEY}>"
-
             List<String> childFunctions = []
             for (childEPCFunction in function.childEPCFunctions) {
                 String childFunction = "Переход к п. ${childEPCFunction.number.toString()}"
@@ -2291,38 +2307,17 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 String childFunction = "Переход к процессу «${childExternalFunction.function.name}»"
                 childFunctions.add(childFunction)
             }
-
-            int childFunctionsCount = childFunctions.size()
-            childFunctions.eachWithIndex { String childFunction, int number ->
-                String childFunctionReplacement = number + 1 < childFunctionsCount ? "${childFunction};" : childFunction
-                replaceInCopyParagraph(functionTableCell, childFunctionPattern, childFunctionReplacement)
-            }
-
-            if (childFunctions) {
-                functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
-            } else {
-                addParagraphText(functionTableCell.getParagraphArray(0), '')
-            }
+            fillFunctionTableCell(functionTableCell, childFunctions, childFunctionPattern)
         }
 
-        private static void fillInformationSystems(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String informationSystemPattern = "<${INFORMATION_SYSTEM_TEMPLATE_KEY}>"
-
-            List<String> informationSystems = []
-            for (informationSystemInfo in function.informationSystems) {
-                String informationSystem = ''
-                informationSystem += informationSystemInfo.name ? informationSystemInfo.name : informationSystemPattern
-                informationSystems.add(informationSystem)
-            }
-            informationSystems = informationSystems.sort()
-
-            int informationSystemsCount = informationSystems.size()
-            informationSystems.eachWithIndex { String informationSystem, int number ->
-                String informationSystemReplacement = number + 1 < informationSystemsCount ? "${informationSystem};" : informationSystem
-                replaceInCopyParagraph(functionTableCell, informationSystemPattern, informationSystemReplacement)
+        private static void fillFunctionTableCell(XWPFTableCell functionTableCell, List<String> elements, String pattern) {
+            int elementsCount = elements.size()
+            elements.eachWithIndex { String element, int number ->
+                String replacement = number + 1 < elementsCount ? "${element};" : element
+                replaceInCopyParagraph(functionTableCell, pattern, replacement)
             }
 
-            if (informationSystems) {
+            if (elements) {
                 functionTableCell.removeParagraph(functionTableCell.getParagraphs().size() - 1)
             } else {
                 addParagraphText(functionTableCell.getParagraphArray(0), '')
@@ -2667,7 +2662,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
                 List<XWPFTable> functionsTables = []
                 for (currentTable in document.getTables()) {
-                    if (tableHasHeaders(currentTable, FUNCTIONS_TABLE_HEADERS)) {
+                    if (currentTable.getRows().size() == 0) {
+                        continue
+                    }
+
+                    int headerMatchesCount = 0
+                    for (row in currentTable.getRows()) {
+                        String horizontalHeader = row.getTableCells().get(0).getParagraphs().get(0).getText()
+
+                        if (horizontalHeader in FUNCTIONS_TABLE_DOCUMENT_HORIZONTAL_HEADERS) {
+                            headerMatchesCount++
+                        }
+                    }
+
+                    if (headerMatchesCount >= 2) {
                         functionsTables.add(currentTable)
                     }
                 }
@@ -2720,21 +2728,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private static void setHyperlinksInFunctionsTables(List<XWPFTable> tables, String documentCollection, String bookmarkName) {
             for (table in tables) {
-                if (table.getRows().size() == 1) {
-                    continue
-                }
+                for (row in table.getRows()) {
+                    String horizontalHeader = row.getTableCells().get(0).getParagraphs().get(0).getText()
 
-                for (int rowNumber = 1; rowNumber < table.getRows().size(); rowNumber++) {
-                    if (rowNumber % 2 == 0) {
-                        continue
-                    }
-
-                    List<XWPFTableCell> cells = [
-                            table.getRow(rowNumber).getTableCells().get(1),
-                            table.getRow(rowNumber).getTableCells().get(3),
-                    ]
-
-                    for (cell in cells) {
+                    if (horizontalHeader in FUNCTIONS_TABLE_DOCUMENT_HORIZONTAL_HEADERS) {
+                        XWPFTableCell cell = row.getTableCells().get(1)
                         for (paragraph in cell.getParagraphs()) {
                             if (!(paragraph.getText().contains(documentCollection))) {
                                 continue
