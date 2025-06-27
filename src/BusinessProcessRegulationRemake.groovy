@@ -3419,7 +3419,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         if (files.size() > 1) {
-            resultFileName = ZIP_RESULT_FILE_NAME_FIRST_PART + ' ' + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
+            resultFileName = ZIP_RESULT_FILE_NAME_FIRST_PART + ' ' + detailLevel.toString() + '_' + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
             format = ZIP_FORMAT
 
             byte[] zipFileContent = createZipFileContent(files)
@@ -3592,7 +3592,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private List<FileInfo> createBPRegulations(List<SubprocessDescription> subprocessDescriptions) {
         List<FileInfo> files = []
         subprocessDescriptions.forEach { SubprocessDescription subprocessDescription ->
-            String fileName = DOCX_RESULT_FILE_NAME_FIRST_PART + " '${subprocessDescription.subprocess.function.name}' " + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
+            String fileName = DOCX_RESULT_FILE_NAME_FIRST_PART + " '${subprocessDescription.subprocess.function.name}' " + detailLevel.toString() + '_' + new SimpleDateFormat('yyyyMMdd HHmmss').format(new Date()).replace(' ', '_')
             BusinessProcessRegulationDocument document = getBPRegulationDocument(fileName, subprocessDescription)
 
             if (DEBUG) {
