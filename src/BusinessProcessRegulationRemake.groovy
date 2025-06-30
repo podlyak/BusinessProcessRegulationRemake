@@ -2668,7 +2668,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                         }
                     }
 
-                    if (headerMatchesCount == 2) {
+                    if (headerMatchesCount >= 2) {
                         functionsTables.add(currentTable)
                     }
                 }
