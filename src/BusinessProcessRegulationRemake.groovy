@@ -162,8 +162,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     //------------------------------------------------------------------------------------------------------------------
     // константы для работы с файлами
     //------------------------------------------------------------------------------------------------------------------
-    private static final String DOCX_RESULT_FILE_NAME_FIRST_PART = 'Регламент бизнес-процесса'
-    private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты бизнес-процессов'
+    private static final String DOCX_RESULT_FILE_NAME_FIRST_PART = 'Регламент БП'
+    private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты БП'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
     private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v10.docx'
