@@ -2086,8 +2086,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             for (procedure in scenarioDescription.procedures) {
                 XWPFTableRow newProcedureRow = copyTableRow(table.getRows().get(1), table)
 
-                String procedurePattern = "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
-                String procedureReplacement = procedure.procedure.functionInfo.function.name ? procedure.procedure.functionInfo.function.name : procedurePattern
+                String procedurePattern = "<${PROCEDURE_CODE_TEMPLATE_KEY}> <${PROCEDURE_NAME_TEMPLATE_KEY}>"
+                String procedureReplacement = procedure.procedure.functionInfo.code ? procedure.procedure.functionInfo.code : "<${PROCEDURE_CODE_TEMPLATE_KEY}>"
+                procedureReplacement += ' '
+                procedureReplacement += procedure.procedure.functionInfo.function.name ? procedure.procedure.functionInfo.function.name : "<${PROCEDURE_NAME_TEMPLATE_KEY}>"
                 replaceParagraphText(newProcedureRow.getTableCells().get(0).getParagraphs().get(0), procedurePattern, procedureReplacement)
 
                 List<String> procedureBusinessRoles = procedure.businessRoles.collect { BusinessRoleInfo businessRole -> (businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern) }
