@@ -166,7 +166,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты БП'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v10.docx'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v11.docx'
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
@@ -185,6 +185,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String DOC_VERSION_TEMPLATE_KEY = 'XX'
     private static final String DOC_DATE_TEMPLATE_KEY = 'XX.XX.XXXX'
     private static final String PROCESS_NAME_TEMPLATE_KEY = 'Наименование процесса'
+    private static final String FIRST_LEVEL_PROCESS_CODE_TEMPLATE_KEY = 'Код ПВУ'
     private static final String FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY = 'ПВУ'
     private static final String PROCESS_REQUIREMENTS_TEMPLATE_KEY = 'Требования к процессу'
 
@@ -226,8 +227,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             "<${FUNCTION_CODE_TEMPLATE_KEY}> <${FUNCTION_NAME_TEMPLATE_KEY}>",
     ]
     private static final List<String> FUNCTIONS_TABLE_DOCUMENT_HORIZONTAL_HEADERS = [
-            'Входящие документы',
-            'Исходящие документы',
+            'Входы',
+            'Выходы',
     ]
     private static final List<String> RESPONSIBILITY_MATRIX_HEADERS = [
             'Процедура / Роль',
@@ -278,12 +279,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String FUNCTION_CODE_TEMPLATE_KEY = 'Код функции'
     private static final String FUNCTION_NAME_TEMPLATE_KEY = 'Функция'
     private static final String PERFORMER_TEMPLATE_KEY = 'Исполнитель'
-    private static final String INPUT_EVENT_TEMPLATE_KEY = 'Входящее событие'
     private static final String INPUT_DOCUMENT_TEMPLATE_KEY = 'Входящий документ'
+    private static final String INPUT_EVENT_TEMPLATE_KEY = 'Входящее событие'
     private static final String INFORMATION_SYSTEM_TEMPLATE_KEY = 'Информационная система'
     private static final String FUNCTION_REQUIREMENTS_TEMPLATE_KEY = 'Требования к функции'
-    private static final String OUTPUT_EVENT_TEMPLATE_KEY = 'Исходящее событие'
     private static final String OUTPUT_DOCUMENT_TEMPLATE_KEY = 'Исходящий документ'
+    private static final String OUTPUT_EVENT_TEMPLATE_KEY = 'Исходящее событие'
     private static final String DURATION_TEMPLATE_KEY = 'Длительность'
     private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
     private static final String BUSINESS_ROLE_NAME_TEMPLATE_KEY = 'Роль'
@@ -1580,6 +1581,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             map.put(DOC_VERSION_TEMPLATE_KEY, docVersion)
             map.put(DOC_DATE_TEMPLATE_KEY, docDate)
             map.put(PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.subprocess.function.name)
+            map.put(FIRST_LEVEL_PROCESS_CODE_TEMPLATE_KEY, subprocessDescription.parentProcess.code)
             map.put(FIRST_LEVEL_PROCESS_NAME_TEMPLATE_KEY, subprocessDescription.parentProcess.function.name)
             map.put(PROCESS_REQUIREMENTS_TEMPLATE_KEY, subprocessDescription.subprocess.requirements ? "${subprocessDescription.subprocess.requirements}." : subprocessDescription.subprocess.requirements)
             return map
@@ -2025,13 +2027,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
                 List<EPCFunctionDescription> functions = description.scenario.epcFunctions
 
-                if (table.getRows().size() != 10) {
+                if (table.getRows().size() != 8) {
                     return
                 }
 
                 fillFunctionsTable(table, functions)
 
-                for (int pos = 9; pos > 0; pos--) {
+                for (int pos = 7; pos > 0; pos--) {
                     table.removeRow(pos)
                 }
 
@@ -2150,13 +2152,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
             List<EPCFunctionDescription> functions = description.procedure.epcFunctions
 
-            if (table.getRows().size() != 10) {
+            if (table.getRows().size() != 8) {
                 return
             }
 
             fillFunctionsTable(table, functions)
 
-            for (int pos = 9; pos > 0; pos--) {
+            for (int pos = 7; pos > 0; pos--) {
                 table.removeRow(pos)
             }
 
@@ -2172,24 +2174,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             for (function in functions) {
                 XWPFTableRow functionRow = copyTableRow(table.getRows().get(0), table)
                 XWPFTableRow performersRow = copyTableRow(table.getRows().get(1), table)
-                XWPFTableRow inputEventsRow = copyTableRow(table.getRows().get(2), table)
-                XWPFTableRow inputDocumentsRow = copyTableRow(table.getRows().get(3), table)
-                XWPFTableRow informationSystemsRow = copyTableRow(table.getRows().get(4), table)
-                XWPFTableRow requirementsRow = copyTableRow(table.getRows().get(5), table)
-                XWPFTableRow outputEventsRow = copyTableRow(table.getRows().get(6), table)
-                XWPFTableRow outputDocumentsRow = copyTableRow(table.getRows().get(7), table)
-                XWPFTableRow durationRow = copyTableRow(table.getRows().get(8), table)
-                XWPFTableRow childFunctionsRow = copyTableRow(table.getRows().get(9), table)
+                XWPFTableRow inputsRow = copyTableRow(table.getRows().get(2), table)
+                XWPFTableRow informationSystemsRow = copyTableRow(table.getRows().get(3), table)
+                XWPFTableRow requirementsRow = copyTableRow(table.getRows().get(4), table)
+                XWPFTableRow outputsRow = copyTableRow(table.getRows().get(5), table)
+                XWPFTableRow durationRow = copyTableRow(table.getRows().get(6), table)
+                XWPFTableRow childFunctionsRow = copyTableRow(table.getRows().get(7), table)
 
                 fillFunctionNumber(function, functionRow.getTableCells().get(0))
                 fillFunctionName(function, functionRow.getTableCells().get(1))
                 fillPerformers(function, performersRow.getTableCells().get(1))
-                fillFunctionInputEvents(function, inputEventsRow.getTableCells().get(1))
-                fillFunctionInputDocuments(function, inputDocumentsRow.getTableCells().get(1))
+                fillFunctionInputs(function, inputsRow.getTableCells().get(1))
                 fillInformationSystems(function, informationSystemsRow.getTableCells().get(1))
                 fillRequirements(function, requirementsRow.getTableCells().get(1))
-                fillFunctionOutputEvents(function, outputEventsRow.getTableCells().get(1))
-                fillFunctionOutputDocuments(function, outputDocumentsRow.getTableCells().get(1))
+                fillFunctionOutputs(function, outputsRow.getTableCells().get(1))
                 fillDuration(function, durationRow.getTableCells().get(1))
                 fillChildFunctions(function, childFunctionsRow.getTableCells().get(1))
             }
@@ -2222,18 +2220,15 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             fillFunctionTableCell(functionTableCell, performers, performerPattern)
         }
 
-        private static void fillFunctionInputEvents(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String inputEventPattern = "<${INPUT_EVENT_TEMPLATE_KEY}>"
-            List<String> inputEvents = getFunctionEvents(function.inputEvents, inputEventPattern)
-            inputEvents = inputEvents.sort()
-            fillFunctionTableCell(functionTableCell, inputEvents, inputEventPattern)
-        }
+        private static void fillFunctionInputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String inputPattern = "<${INPUT_DOCUMENT_TEMPLATE_KEY}/${INPUT_EVENT_TEMPLATE_KEY}>"
+            List<String> inputs = getFunctionDocuments(function.inputDocuments, "<${INPUT_DOCUMENT_TEMPLATE_KEY}>")
 
-        private static void fillFunctionInputDocuments(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String inputDocumentPattern = "<${INPUT_DOCUMENT_TEMPLATE_KEY}>"
-            List<String> inputDocuments = getFunctionDocuments(function.inputDocuments, inputDocumentPattern)
-            inputDocuments = inputDocuments.sort()
-            fillFunctionTableCell(functionTableCell, inputDocuments, inputDocumentPattern)
+            if (inputs.isEmpty()) {
+                inputs = getFunctionEvents(function.inputEvents, "<${INPUT_EVENT_TEMPLATE_KEY}>")
+            }
+
+            fillFunctionTableCell(functionTableCell, inputs, inputPattern)
         }
 
         private static void fillInformationSystems(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
@@ -2254,24 +2249,22 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             replaceParagraphText(functionTableCell.getParagraphs().get(0), requirementsPattern, requirementsReplacement)
         }
 
-        private static void fillFunctionOutputEvents(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String outputEventPattern = "<${OUTPUT_EVENT_TEMPLATE_KEY}>"
-            List<String> outputEvents = getFunctionEvents(function.outputEvents, outputEventPattern)
-            outputEvents = outputEvents.sort()
-            fillFunctionTableCell(functionTableCell, outputEvents, outputEventPattern)
-        }
+        private static void fillFunctionOutputs(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String outputPattern = "<${OUTPUT_DOCUMENT_TEMPLATE_KEY}/${OUTPUT_EVENT_TEMPLATE_KEY}>"
+            List<String> outputs = getFunctionDocuments(function.outputDocuments, "<${OUTPUT_DOCUMENT_TEMPLATE_KEY}>")
 
-        private static void fillFunctionOutputDocuments(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
-            String outputDocumentPattern = "<${OUTPUT_DOCUMENT_TEMPLATE_KEY}>"
-            List<String> outputDocuments = getFunctionDocuments(function.outputDocuments, outputDocumentPattern)
-            outputDocuments = outputDocuments.sort()
-            fillFunctionTableCell(functionTableCell, outputDocuments, outputDocumentPattern)
+            if (outputs.isEmpty()) {
+                outputs = getFunctionEvents(function.outputEvents, "<${OUTPUT_EVENT_TEMPLATE_KEY}>")
+            }
+
+            fillFunctionTableCell(functionTableCell, outputs, outputPattern)
         }
 
         private static List<String> getFunctionEvents(List<CommonObjectInfo> events, String eventPattern) {
             List<String> resultEvents = []
             for (event in events) {
                 String resultEvent = event.name ? event.name : eventPattern
+                resultEvent += ' [событие]'
                 resultEvents.add(resultEvent)
             }
             return resultEvents
@@ -2675,7 +2668,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                         }
                     }
 
-                    if (headerMatchesCount >= 2) {
+                    if (headerMatchesCount == 2) {
                         functionsTables.add(currentTable)
                     }
                 }
