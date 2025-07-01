@@ -841,6 +841,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .stream()
                     .findFirst()
                     .orElse(null)
+
+            if (parentElement == null) {
+                throw new Exception('Невозможно определить процесс верхнего уровня')
+            }
+
             this.parentProcess = new CommonFunctionInfo(parentElement)
         }
 
