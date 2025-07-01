@@ -574,13 +574,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.function = new CommonObjectInfo(function)
             ObjectDefinition objectDefinition = function.getObjectDefinition()
             this.code = getAttributeValue(objectDefinition, DATA_ELEMENT_CODE_ATTR_ID)
-            this.requirements = getAttributeValue(objectDefinition, DESCRIPTION_DEFINITION_ATTR_ID)
+            this.requirements = getAttributeValue(objectDefinition, DESCRIPTION_DEFINITION_ATTR_ID, false)
         }
 
         CommonFunctionInfo(Model model) {
             this.function = new CommonObjectInfo(model)
             this.code = getAttributeValue(model, DATA_ELEMENT_CODE_ATTR_ID)
-            this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID)
+            this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID, false)
         }
     }
 
@@ -3313,7 +3313,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         return fullName ? fullName : name
     }
 
-    private static String getAttributeValue(TreeNode treeNode, String attributeId) {
+    private static String getAttributeValue(TreeNode treeNode, String attributeId, boolean trimFlag = true) {
         Node node = treeNode._getNode()
         AttributeValue attribute = node.getAttributes().stream()
                 .filter { AttributeValue aV -> aV.typeId == attributeId }
@@ -3321,7 +3321,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 .orElse(null)
 
         if (attribute != null && attribute.value != null && !attribute.value.trim().isEmpty()) {
-            String value = trimStringValue(attribute.value)
+            String value = attribute.value
+
+            if (trimFlag) {
+                value = trimStringValue(value)
+            }
 
             if (value) {
                 findAbbreviations(value)
