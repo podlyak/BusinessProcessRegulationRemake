@@ -574,13 +574,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             this.function = new CommonObjectInfo(function)
             ObjectDefinition objectDefinition = function.getObjectDefinition()
             this.code = getAttributeValue(objectDefinition, DATA_ELEMENT_CODE_ATTR_ID)
-            this.requirements = getAttributeValue(objectDefinition, DESCRIPTION_DEFINITION_ATTR_ID, false)
+            this.requirements = getAttributeValue(objectDefinition, DESCRIPTION_DEFINITION_ATTR_ID)
         }
 
         CommonFunctionInfo(Model model) {
             this.function = new CommonObjectInfo(model)
             this.code = getAttributeValue(model, DATA_ELEMENT_CODE_ATTR_ID)
-            this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID, false)
+            this.requirements = getAttributeValue(model, DESCRIPTION_DEFINITION_ATTR_ID)
         }
     }
 
