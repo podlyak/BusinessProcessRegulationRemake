@@ -166,7 +166,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String ZIP_RESULT_FILE_NAME_FIRST_PART = 'Регламенты БП'
     private static final String DOCX_FORMAT = 'docx'
     private static final String ZIP_FORMAT = 'zip'
-    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v11.docx'
+    private static final String BUSINESS_PROCESS_REGULATION_TEMPLATE_NAME = 'business_process_regulation_template_v12.docx'
     private static final String TEMPLATE_FOLDER_NAME = 'Общие'
 
     //------------------------------------------------------------------------------------------------------------------
@@ -1912,27 +1912,37 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             XWPFParagraph imageParagraph = paragraphs[0]
-            // позиция относительно всех элемнтов
+            // позиция относительно всех элементов
             int imageParagraphPosition = document.getPosOfParagraph(imageParagraph)
             // позиция относительно параграфов
             int imageParagraphSpecificPos = document.getParagraphPos(imageParagraphPosition)
-            // удаление дополнительного разрыва раздела, так как:
-            // 1 - при вставке изображения, после страницы изображения разрыв раздела генерируется автоматически
-            // 2 - при удалении шаблона изображения, разрыв больше не нужен
-            document.removeBodyElement(imageParagraphPosition + 2)
 
             if (subprocessDescription.processSelectionModel) {
+                // удаление дополнительного разрыва раздела, так как при вставке изображения после страницы изображения
+                // разрыв раздела генерируется автоматически
+                document.removeBodyElement(imageParagraphPosition + 2)
+
                 while (imageParagraph.getRuns().size() > 0) {
                     imageParagraph.removeRun(0)
                 }
 
                 XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
-                addPicture(imageParagraph, subprocessDescription.processSelectionModel, labelParagraph)
+                ModelImage modelImage = getModelImage(subprocessDescription.processSelectionModel, imageType)
+
+                int previouslyStringsCount
+                if (modelImage.width > modelImage.height) {
+                    previouslyStringsCount = 6
+                }
+                else {
+                    previouslyStringsCount = 7
+                }
+
+                addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
             } else {
                 document.removeBodyElement(imageParagraphPosition + 1)
                 document.removeBodyElement(imageParagraphPosition)
                 document.removeBodyElement(imageParagraphPosition - 1)
-                addParagraphText(document.getParagraphArray(imageParagraphSpecificPos - 2), '')
+                document.removeBodyElement(imageParagraphPosition - 5)
             }
         }
 
@@ -2016,9 +2026,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             int imageParagraphPosition = document.getPosOfParagraph(imageParagraph)
             // позиция относительно параграфов
             int imageParagraphSpecificPos = document.getParagraphPos(imageParagraphPosition)
-            // удаление дополнительного разрыва раздела, так как:
-            // 1 - при вставке изображения, после страницы изображения разрыв раздела генерируется автоматически
-            // 2 - при удалении шаблона изображения, разрыв больше не нужен
+            // удаление дополнительного разрыва раздела, так как при вставке изображения после страницы изображения
+            // разрыв раздела генерируется автоматически
             document.removeBodyElement(imageParagraphPosition + 2)
 
             while (imageParagraph.getRuns().size() > 0) {
@@ -2026,7 +2035,51 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
-            addPicture(imageParagraph, description.scenario.model, labelParagraph)
+            ModelImage modelImage = getModelImage(description.scenario.model, imageType)
+
+            int scenarioReplacementLength = scenarioReplacement.length()
+            int requirementsReplacementLength = requirementsReplacement.length()
+
+            int previouslyStringsCount
+            if (modelImage.width > modelImage.height) {
+                // максимум 73 символа "w" влезает в первую строку заголовка раздела
+                // максимум 80 символов "w" влезает в последующие строки заголовка раздела
+                int scenarioStringsCount = getStringsCount(scenarioReplacementLength, 73, 80)
+
+                // максимум 79 символов "w" влезает в первую строку требований
+                // максимум 84 символов "w" влезает в последующие строки требований
+                int requirementsStringsCount = getStringsCount(requirementsReplacementLength, 79, 84)
+
+                // * 1.5 происходит из-за более высоких строк для заголовков раздела
+                // + 2 означает учет двух статичных строк из шаблона
+                previouslyStringsCount = (int) (scenarioStringsCount * 1.5 + requirementsStringsCount + 2)
+                // максимум 34 обычных строки влезает на страницу
+                if (previouslyStringsCount / 34 <= 1/3) {
+                    document.removeBodyElement(imageParagraphPosition - 1)
+                    addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
+                } else {
+                    addPicture(imageParagraph, modelImage, labelParagraph, 0)
+                }
+            } else {
+                // максимум 45 символов "w" влезает в первую строку заголовка раздела
+                // максимум 52 символа "w" влезает в последующие строки заголовка раздела
+                int scenarioStringsCount = getStringsCount(scenarioReplacementLength, 45, 52)
+
+                // максимум 51 символ "w" влезает в первую строку требований
+                // максимум 55 символов "w" влезает в последующие строки требований
+                int requirementsStringsCount = getStringsCount(requirementsReplacementLength, 51, 55)
+
+                // * 1.5 происходит из-за более высоких строк для заголовков раздела
+                // + 2 означает учет двух статичных строк из шаблона
+                previouslyStringsCount = (int) (scenarioStringsCount * 1.5 + requirementsStringsCount + 2)
+                // максимум 52 обычных строки влезает на страницу
+                if (previouslyStringsCount / 52 <= 1/3) {
+                    document.removeBodyElement(imageParagraphPosition - 1)
+                    addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
+                } else {
+                    addPicture(imageParagraph, modelImage, labelParagraph, 0)
+                }
+            }
 
             if (detailLevel == 3) {
                 XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
@@ -2144,9 +2197,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             int imageParagraphPosition = document.getPosOfParagraph(imageParagraph)
             // позиция относительно параграфов
             int imageParagraphSpecificPos = document.getParagraphPos(imageParagraphPosition)
-            // удаление дополнительного разрыва раздела, так как:
-            // 1 - при вставке изображения, после страницы изображения разрыв раздела генерируется автоматически
-            // 2 - при удалении шаблона изображения, разрыв больше не нужен
+            // удаление дополнительного разрыва раздела, так как при вставке изображения после страницы изображения
+            // разрыв раздела генерируется автоматически
             document.removeBodyElement(imageParagraphPosition + 2)
 
             while (imageParagraph.getRuns().size() > 0) {
@@ -2154,7 +2206,51 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
 
             XWPFParagraph labelParagraph = document.getParagraphArray(imageParagraphSpecificPos + 1)
-            addPicture(imageParagraph, description.procedure.model, labelParagraph)
+            ModelImage modelImage = getModelImage(description.procedure.model, imageType)
+
+            int procedureReplacementLength = procedureReplacement.length()
+            int requirementsReplacementLength = requirementsReplacement.length()
+
+            int previouslyStringsCount
+            if (modelImage.width > modelImage.height) {
+                // максимум 69 символов "w" влезает в первую строку заголовка раздела
+                // максимум 76 символов "w" влезает в последующие строки заголовка раздела
+                int procedureStringsCount = getStringsCount(procedureReplacementLength, 69, 76)
+
+                // максимум 79 символов "w" влезает в первую строку требований
+                // максимум 84 символов "w" влезает в последующие строки требований
+                int requirementsStringsCount = getStringsCount(requirementsReplacementLength, 79, 84)
+
+                // * 1.5 происходит из-за более высоких строк для заголовков раздела
+                // + 2 означает учет двух статичных строк из шаблона
+                previouslyStringsCount = (int) (procedureStringsCount * 1.5 + requirementsStringsCount + 2)
+                // максимум 34 обычных строки влезает на страницу
+                if (previouslyStringsCount / 34 <= 1/3) {
+                    document.removeBodyElement(imageParagraphPosition - 1)
+                    addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
+                } else {
+                    addPicture(imageParagraph, modelImage, labelParagraph, 0)
+                }
+            } else {
+                // максимум 41 символ "w" влезает в первую строку заголовка раздела
+                // максимум 48 символов "w" влезает в последующие строки заголовка раздела
+                int procedureStringsCount = getStringsCount(procedureReplacementLength, 41, 48)
+
+                // максимум 51 символ "w" влезает в первую строку требований
+                // максимум 55 символов "w" влезает в последующие строки требований
+                int requirementsStringsCount = getStringsCount(requirementsReplacementLength, 51, 55)
+
+                // * 1.5 происходит из-за более высоких строк для заголовков раздела
+                // + 2 означает учет двух статичных строк из шаблона
+                previouslyStringsCount = (int) (procedureStringsCount * 1.5 + requirementsStringsCount + 2)
+                // максимум 52 обычных строки влезает на страницу
+                if (previouslyStringsCount / 52 <= 1/3) {
+                    document.removeBodyElement(imageParagraphPosition - 1)
+                    addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
+                } else {
+                    addPicture(imageParagraph, modelImage, labelParagraph, 0)
+                }
+            }
 
             XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
             List<EPCFunctionDescription> functions = description.procedure.epcFunctions
@@ -2175,6 +2271,23 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 replaceParagraphText(table.getRows().get(0).getTableCells().get(0).getParagraphs().get(0), "<${FUNCTION_NUMBER_TEMPLATE_KEY}>", '')
                 replaceParagraphText(table.getRows().get(0).getTableCells().get(1).getParagraphs().get(0), "<${FUNCTION_CODE_TEMPLATE_KEY}> <${FUNCTION_NAME_TEMPLATE_KEY}>", '')
             }
+        }
+
+        private static int getStringsCount(int textLength, int firstRowMaxLength, int otherRowMaxLength) {
+            int length = textLength
+
+            int stringsCount = 0
+            if (length <= firstRowMaxLength) {
+                stringsCount = 1
+            } else {
+                length -= firstRowMaxLength
+                stringsCount += 1
+                while (length > 0) {
+                    stringsCount += 1
+                    length -= otherRowMaxLength
+                }
+            }
+            return stringsCount
         }
 
         private static void fillFunctionsTable(XWPFTable table, List<EPCFunctionDescription> functions) {
@@ -2925,10 +3038,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             return true
         }
 
-        private XWPFParagraph addPicture(XWPFParagraph imageParagraph, Model model, XWPFParagraph labelParagraph) {
+        private XWPFParagraph addPicture(XWPFParagraph imageParagraph, ModelImage modelImage, XWPFParagraph labelParagraph, int previouslyStringsCount) {
             try {
-                ModelImage modelImage = getModelImage(model, imageType)
-
                 if (modelImage.image.length == 0) {
                     throw new Exception("Изображение не найдено")
                 }
@@ -2972,11 +3083,11 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 if (modelImage.width > modelImage.height) {
                     int labelStringsCount = (int) Math.ceil(labelLength / 95.0) // 95 букв в одной строке
                     pageW = longSide
-                    pageH = shortSide - labelStringsCount * labelStringHeight
+                    pageH = shortSide - (labelStringsCount + previouslyStringsCount) * labelStringHeight
                 } else {
                     int labelStringsCount = (int) Math.ceil(labelLength / 57.0) // 57 букв в одной строке
                     pageW = shortSide
-                    pageH = longSide - labelStringsCount * labelStringHeight
+                    pageH = longSide - (labelStringsCount + previouslyStringsCount) * labelStringHeight
                 }
 
                 // Если изображение не помещается на страницу, то надо его масштабировать
