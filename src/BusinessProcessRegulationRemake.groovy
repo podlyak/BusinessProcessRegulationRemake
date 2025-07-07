@@ -286,7 +286,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
     private static final String OUTPUT_DOCUMENT_TEMPLATE_KEY = 'Исходящий документ'
     private static final String OUTPUT_EVENT_TEMPLATE_KEY = 'Исходящее событие'
     private static final String DURATION_TEMPLATE_KEY = 'Длительность'
-    private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие'
+    private static final String PARENT_FUNCTION_TEMPLATE_KEY = 'Условие вход'
+    private static final String CHILD_FUNCTION_TEMPLATE_KEY = 'Условие выход'
     private static final String BUSINESS_ROLE_NAME_TEMPLATE_KEY = 'Роль'
     private static final String PROCEDURE_CODE_TEMPLATE_KEY = 'Код процедуры'
     private static final String PROCEDURE_NAME_TEMPLATE_KEY = 'Процедура'
@@ -1288,6 +1289,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             epcFunction.findOutputEvents()
             epcFunction.findPerformers()
             epcFunction.findInformationSystems()
+            epcFunction.findParentFunctions(epcFunctions)
             epcFunction.findChildFunctions(epcFunctions)
         }
     }
@@ -1304,6 +1306,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         List<PerformerInfo> performers = []
         List<CommonObjectInfo> informationSystems = []
 
+        List<EPCFunctionDescription> parentEPCFunctions = []
+        List<CommonFunctionInfo> parentExternalFunctions = []
         List<EPCFunctionDescription> childEPCFunctions = []
         List<CommonFunctionInfo> childExternalFunctions = []
 
@@ -1323,50 +1327,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         void findInputEvents() {
-            List<ObjectElement> eventObjects = function.function.object.getEnterEdges()
-                    .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_EPC_FUNCTION_EDGE_TYPE_ID }
-                    .collect { Edge e -> e.getSource() as ObjectElement }
-                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
-                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
-
-            List<ObjectElement> operators = function.function.object.getEnterEdges()
-                    .findAll { Edge e -> e.getEdgeTypeId() == OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID }
-                    .collect { Edge e -> e.getSource() as ObjectElement }
-                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
-                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
-
-            while (operators) {
-                List<ObjectElement> unparsedOperators = operators
-                operators = []
-
-                unparsedOperators.each { ObjectElement unparsedOperator ->
-                    eventObjects.addAll(findInputEventsViaOperator(unparsedOperator))
-                    operators.addAll(findInputOperatorsViaOperator(unparsedOperator))
-                }
-            }
-
-            eventObjects = eventObjects
+            List<ObjectElement> eventObjects = findInputEventObjects(function.function.object)
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
             inputEvents = eventObjects.collect { ObjectElement eventObject -> new CommonObjectInfo(eventObject) }
-        }
-
-        private List<ObjectElement> findInputEventsViaOperator(ObjectElement operator) {
-            List<ObjectElement> eventObjects = operator.getEnterEdges()
-                    .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_OPERATOR_EDGE_TYPE_ID }
-                    .collect { Edge e -> e.getSource() as ObjectElement }
-                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
-                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
-            return eventObjects
-        }
-
-        private List<ObjectElement> findInputOperatorsViaOperator(ObjectElement operator) {
-            List<ObjectElement> operators = operator.getEnterEdges()
-                    .findAll { Edge e -> e.getEdgeTypeId() in OPERATOR_W_OPERATOR_EDGE_TYPE_IDS }
-                    .collect { Edge e -> e.getSource() as ObjectElement }
-                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
-                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
-            return operators
         }
 
         void findOutputDocuments() {
@@ -1405,6 +1369,112 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
             informationSystems = informationSystemObjects.collect { ObjectElement informationSystemObject -> new CommonObjectInfo(informationSystemObject, true) }
+        }
+
+        void findParentFunctions(List<EPCFunctionDescription> epcFunctions) {
+            List<ObjectElement> eventObjects = findInputEventObjects(function.function.object)
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+
+            List<ObjectElement> parentFunctionObjects = []
+            eventObjects.each { ObjectElement eventObject ->
+                parentFunctionObjects.addAll(
+                        findParentFunctionsForEvent(eventObject)
+                )
+            }
+
+            parentFunctionObjects = parentFunctionObjects
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getObjectDefinitionId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+
+            parentFunctionObjects.each { ObjectElement parentFunctionObject ->
+                if (parentFunctionObject.getSymbolId() in EXCLUDED_FUNCTION_SYMBOL_IDS) {
+                    parentExternalFunctions.add(new CommonFunctionInfo(parentFunctionObject))
+                } else {
+                    EPCFunctionDescription parentEPCFunction = epcFunctions
+                            .find { EPCFunctionDescription epcFunction -> epcFunction.function.function.object.getId() == parentFunctionObject.getId() }
+                    parentEPCFunctions.add(parentEPCFunction)
+                }
+            }
+        }
+
+        private List<ObjectElement> findInputEventObjects(ObjectElement functionObject) {
+            List<ObjectElement> eventObjects = functionObject.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_EPC_FUNCTION_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+
+            List<ObjectElement> operators = functionObject.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+
+            while (operators) {
+                List<ObjectElement> unparsedOperators = operators
+                operators = []
+
+                unparsedOperators.each { ObjectElement unparsedOperator ->
+                    eventObjects.addAll(findInputEventsViaOperator(unparsedOperator))
+                    operators.addAll(findInputOperatorsViaOperator(unparsedOperator))
+                }
+            }
+
+            return eventObjects
+        }
+
+        private List<ObjectElement> findInputEventsViaOperator(ObjectElement operator) {
+            List<ObjectElement> eventObjects = operator.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() == EVENT_W_OPERATOR_EDGE_TYPE_ID }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == EVENT_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+            return eventObjects
+        }
+
+        private List<ObjectElement> findParentFunctionsForEvent(ObjectElement eventObject) {
+            List<ObjectElement> parentFunctionObjectsForEvent = eventObject.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_EVENT_EDGE_TYPE_IDS}
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == FUNCTION_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+
+            List<ObjectElement> operators = eventObject.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in OPERATOR_W_EVENT_EDGE_TYPE_IDS}
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+                    .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
+
+            while (operators) {
+                List<ObjectElement> unparsedOperators = operators
+                operators = []
+
+                unparsedOperators.each { ObjectElement unparsedOperator ->
+                    parentFunctionObjectsForEvent.addAll(findParentFunctionsViaOperator(unparsedOperator))
+                    operators.addAll(findInputOperatorsViaOperator(unparsedOperator))
+                }
+            }
+            return parentFunctionObjectsForEvent
+        }
+
+        private List<ObjectElement> findParentFunctionsViaOperator(ObjectElement operator) {
+            List<ObjectElement> parentFunctionObjectsForOperator = operator.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_OPERATOR_EDGE_TYPE_IDS }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == FUNCTION_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+            return parentFunctionObjectsForOperator
+        }
+
+        private List<ObjectElement> findInputOperatorsViaOperator(ObjectElement operator) {
+            List<ObjectElement> operators = operator.getEnterEdges()
+                    .findAll { Edge e -> e.getEdgeTypeId() in OPERATOR_W_OPERATOR_EDGE_TYPE_IDS }
+                    .collect { Edge e -> e.getSource() as ObjectElement }
+                    .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
+                    .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
+            return operators
         }
 
         void findChildFunctions(List<EPCFunctionDescription> epcFunctions) {
@@ -1496,12 +1566,12 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
         }
 
         private List<ObjectElement> findChildFunctionsViaOperator(ObjectElement operator) {
-            List<ObjectElement> eventObjects = operator.getExitEdges()
+            List<ObjectElement> childFunctionObjectsForOperator = operator.getExitEdges()
                     .findAll { Edge e -> e.getEdgeTypeId() == OPERATOR_W_EPC_FUNCTION_EDGE_TYPE_ID }
                     .collect { Edge e -> e.getTarget() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == FUNCTION_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
-            return eventObjects
+            return childFunctionObjectsForOperator
         }
 
         private List<ObjectElement> findOutputOperatorsViaOperator(ObjectElement operator) {
@@ -2085,13 +2155,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
                 List<EPCFunctionDescription> functions = description.scenario.epcFunctions
 
-                if (table.getRows().size() != 8) {
+                if (table.getRows().size() != 9) {
                     return
                 }
 
                 fillFunctionsTable(table, functions)
 
-                for (int pos = 7; pos > 0; pos--) {
+                for (int pos = 8; pos > 0; pos--) {
                     table.removeRow(pos)
                 }
 
@@ -2261,13 +2331,13 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             XWPFTable table = findTableByHeaders(elements, FUNCTIONS_TABLE_HEADERS)
             List<EPCFunctionDescription> functions = description.procedure.epcFunctions
 
-            if (table.getRows().size() != 8) {
+            if (table.getRows().size() != 9) {
                 return
             }
 
             fillFunctionsTable(table, functions)
 
-            for (int pos = 7; pos > 0; pos--) {
+            for (int pos = 8; pos > 0; pos--) {
                 table.removeRow(pos)
             }
 
@@ -2305,7 +2375,8 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 XWPFTableRow requirementsRow = copyTableRow(table.getRows().get(4), table)
                 XWPFTableRow outputsRow = copyTableRow(table.getRows().get(5), table)
                 XWPFTableRow durationRow = copyTableRow(table.getRows().get(6), table)
-                XWPFTableRow childFunctionsRow = copyTableRow(table.getRows().get(7), table)
+                XWPFTableRow parentFunctionsRow = copyTableRow(table.getRows().get(7), table)
+                XWPFTableRow childFunctionsRow = copyTableRow(table.getRows().get(8), table)
 
                 fillFunctionNumber(function, functionRow.getTableCells().get(0))
                 fillFunctionName(function, functionRow.getTableCells().get(1))
@@ -2315,6 +2386,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 fillRequirements(function, requirementsRow.getTableCells().get(1))
                 fillFunctionOutputs(function, outputsRow.getTableCells().get(1))
                 fillDuration(function, durationRow.getTableCells().get(1))
+                fillParentFunctions(function, parentFunctionsRow.getTableCells().get(1))
                 fillChildFunctions(function, childFunctionsRow.getTableCells().get(1))
             }
         }
@@ -2412,6 +2484,21 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             String durationPattern = "<${DURATION_TEMPLATE_KEY}>"
             String durationReplacement = function.duration
             replaceParagraphText(functionTableCell.getParagraphs().get(0), durationPattern, durationReplacement)
+        }
+
+        private static void fillParentFunctions(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
+            String parentFunctionPattern = "<${PARENT_FUNCTION_TEMPLATE_KEY}>"
+            List<String> parentFunctions = []
+            for (parentEPCFunction in function.parentEPCFunctions) {
+                String parentFunction = "Переход от п. ${parentEPCFunction.number.toString()}"
+                parentFunctions.add(parentFunction)
+            }
+
+            for (parentExternalFunction in function.parentExternalFunctions) {
+                String parentFunction = "Переход от процесса «${parentExternalFunction.function.name}»"
+                parentFunctions.add(parentFunction)
+            }
+            fillFunctionTableCell(functionTableCell, parentFunctions, parentFunctionPattern)
         }
 
         private static void fillChildFunctions(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
