@@ -2120,14 +2120,20 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             XWPFTableRow headersRow = table.getRows().get(0)
             String businessRolePattern = "<${BUSINESS_ROLE_NAME_TEMPLATE_KEY}>"
 
-            List<BusinessRoleInfo> businessRoles = scenarioDescription.getAllBusinessRoles()
             XWPFTableCell sourceBusinessRoleCell = headersRow.getTableCells().get(1)
+            List<BusinessRoleInfo> businessRoles = scenarioDescription.getAllBusinessRoles()
+            int businessRolesCount = businessRoles.size()
             for (businessRole in businessRoles) {
                 XWPFTableCell targetCell = headersRow.createCell()
                 targetCell = copyTableCell(sourceBusinessRoleCell, targetCell)
-
                 String businessRoleReplacement = businessRole.businessRole.name ? businessRole.businessRole.name : businessRolePattern
-                replaceParagraphText(targetCell.getParagraphs().get(0), businessRolePattern, businessRoleReplacement)
+
+                int fontSize = 12
+                if (businessRolesCount >= 10) {
+                    fontSize = 10
+                }
+
+                replaceParagraphText(targetCell.getParagraphs().get(0), businessRolePattern, businessRoleReplacement, fontSize)
             }
 
             if (businessRoles) {
@@ -2919,10 +2925,10 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             }
         }
 
-        private static void replaceParagraphText(XWPFParagraph paragraph, String pattern, String replacement) {
+        private static void replaceParagraphText(XWPFParagraph paragraph, String pattern, String replacement, int fontSize = -1) {
             if (paragraph.getText().contains(pattern)) {
                 String newText = paragraph.getText().replace(pattern, replacement)
-                addParagraphText(paragraph, newText)
+                addParagraphText(paragraph, newText, fontSize)
             }
         }
 
