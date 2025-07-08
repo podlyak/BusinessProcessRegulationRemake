@@ -1434,14 +1434,14 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
 
         private List<ObjectElement> findParentFunctionsForEvent(ObjectElement eventObject) {
             List<ObjectElement> parentFunctionObjectsForEvent = eventObject.getEnterEdges()
-                    .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_EVENT_EDGE_TYPE_IDS}
+                    .findAll { Edge e -> e.getEdgeTypeId() in EPC_FUNCTION_W_EVENT_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getSource() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == FUNCTION_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
                     .sort { ObjectElement oE1, ObjectElement oE2 -> ModelUtils.getElementsCoordinatesComparator().compare(oE1, oE2) }
 
             List<ObjectElement> operators = eventObject.getEnterEdges()
-                    .findAll { Edge e -> e.getEdgeTypeId() in OPERATOR_W_EVENT_EDGE_TYPE_IDS}
+                    .findAll { Edge e -> e.getEdgeTypeId() in OPERATOR_W_EVENT_EDGE_TYPE_IDS }
                     .collect { Edge e -> e.getSource() as ObjectElement }
                     .findAll { ObjectElement oE -> oE.getObjectDefinition().getObjectTypeId() == RULE_OBJECT_TYPE_ID }
                     .unique(Comparator.comparing { ObjectElement oE -> oE.getId() })
@@ -2002,8 +2002,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 int previouslyStringsCount
                 if (modelImage.width > modelImage.height) {
                     previouslyStringsCount = 6
-                }
-                else {
+                } else {
                     previouslyStringsCount = 7
                 }
 
@@ -2124,7 +2123,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 // + 2 означает учет двух статичных строк из шаблона
                 previouslyStringsCount = (int) (scenarioStringsCount * 1.5 + requirementsStringsCount + 2)
                 // максимум 34 обычных строки влезает на страницу
-                if (previouslyStringsCount / 34 <= 1/3) {
+                if (previouslyStringsCount / 34 <= 1 / 3) {
                     document.removeBodyElement(imageParagraphPosition - 1)
                     addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
                 } else {
@@ -2143,7 +2142,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 // + 2 означает учет двух статичных строк из шаблона
                 previouslyStringsCount = (int) (scenarioStringsCount * 1.5 + requirementsStringsCount + 2)
                 // максимум 52 обычных строки влезает на страницу
-                if (previouslyStringsCount / 52 <= 1/3) {
+                if (previouslyStringsCount / 52 <= 1 / 3) {
                     document.removeBodyElement(imageParagraphPosition - 1)
                     addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
                 } else {
@@ -2301,7 +2300,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 // + 2 означает учет двух статичных строк из шаблона
                 previouslyStringsCount = (int) (procedureStringsCount * 1.5 + requirementsStringsCount + 2)
                 // максимум 34 обычных строки влезает на страницу
-                if (previouslyStringsCount / 34 <= 1/3) {
+                if (previouslyStringsCount / 34 <= 1 / 3) {
                     document.removeBodyElement(imageParagraphPosition - 1)
                     addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
                 } else {
@@ -2320,7 +2319,7 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 // + 2 означает учет двух статичных строк из шаблона
                 previouslyStringsCount = (int) (procedureStringsCount * 1.5 + requirementsStringsCount + 2)
                 // максимум 52 обычных строки влезает на страницу
-                if (previouslyStringsCount / 52 <= 1/3) {
+                if (previouslyStringsCount / 52 <= 1 / 3) {
                     document.removeBodyElement(imageParagraphPosition - 1)
                     addPicture(imageParagraph, modelImage, labelParagraph, previouslyStringsCount)
                 } else {
@@ -2458,16 +2457,6 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
             fillFunctionTableCell(functionTableCell, outputs, outputPattern)
         }
 
-        private static List<String> getFunctionEvents(List<CommonObjectInfo> events, String eventPattern) {
-            List<String> resultEvents = []
-            for (event in events) {
-                String resultEvent = event.name ? event.name : eventPattern
-                resultEvent += ' [событие]'
-                resultEvents.add(resultEvent)
-            }
-            return resultEvents
-        }
-
         private static List<String> getFunctionDocuments(List<DocumentInfo> documents, String documentPattern) {
             List<String> resultDocuments = []
             for (document in documents) {
@@ -2478,6 +2467,16 @@ class BusinessProcessRegulationRemakeScript implements GroovyScript {
                 resultDocuments.add(resultDocument)
             }
             return resultDocuments
+        }
+
+        private static List<String> getFunctionEvents(List<CommonObjectInfo> events, String eventPattern) {
+            List<String> resultEvents = []
+            for (event in events) {
+                String resultEvent = event.name ? event.name : eventPattern
+                resultEvent += ' [событие]'
+                resultEvents.add(resultEvent)
+            }
+            return resultEvents
         }
 
         private static void fillDuration(EPCFunctionDescription function, XWPFTableCell functionTableCell) {
